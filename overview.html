@@ -251,10 +251,13 @@
             filteredTransactions.forEach(t => {
                 const amount = parseFloat(t.amount) || 0; // Zorg ervoor dat amount een nummer is
                 if (t.type === 'income') {
-                    if (t.category === 'treatments') {
-                        totalTreatments += amount;
-                    } else if (t.category === 'sales') {
-                        totalSales += amount;
+                    // Alleen meetellen als de betalingsmethode NIET 'Cadeaubon' of 'Abonnement' is
+                    if (t.paymentMethod !== 'Cadeaubon' && t.paymentMethod !== 'Abonnement') {
+                        if (t.category === 'treatments') {
+                            totalTreatments += amount;
+                        } else if (t.category === 'sales') {
+                            totalSales += amount;
+                        }
                     }
                 } else if (t.type === 'expense') {
                     totalExpenses += amount;
@@ -475,7 +478,10 @@
                 }
 
                 if (t.type === 'income') {
-                    monthlyTrends[monthKey].income += amount;
+                    // Ook hier de filter toepassen voor de trendanalyse
+                    if (t.paymentMethod !== 'Cadeaubon' && t.paymentMethod !== 'Abonnement') {
+                        monthlyTrends[monthKey].income += amount;
+                    }
                 } else if (t.type === 'expense') {
                     monthlyTrends[monthKey].expenses += amount;
                     if (RECOVERABLE_VAT_EXPENSE_CATEGORIES.includes(t.subcategory)) {
@@ -513,7 +519,10 @@
             filteredTransactions.forEach(t => {
                 const amount = parseFloat(t.amount) || 0; // Safe parsing
                 if (t.type === 'income') {
-                    totalIncomeForVAT += amount;
+                    // Ook hier de filter toepassen voor BTW-berekening
+                    if (t.paymentMethod !== 'Cadeaubon' && t.paymentMethod !== 'Abonnement') {
+                        totalIncomeForVAT += amount;
+                    }
                 } else if (t.type === 'expense' && RECOVERABLE_VAT_EXPENSE_CATEGORIES.includes(t.subcategory)) {
                     totalExpensesForRecoverableVAT += amount;
                 }
