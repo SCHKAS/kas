@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financiële Tracker - Export</title>
+    <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
+    <link rel="manifest" href="manifest.json"> <!-- Link naar het PWA manifest bestand -->
+    <script>
+        // Registreer de Service Worker voor PWA functionaliteit
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js voor geluidseffecten -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <!-- SheetJS (xlsx) voor XLSX export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Firebase SDK imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase instances
+        window.firebaseApp = null;
+        window.db = null;
+        window.auth = null;
+        window.userId = null;
+        window.isAuthReady = false;
+        window.transactions = []; // Store transactions globally
+        window.isLoading = false; // Nieuwe globale variabele voor laadstatus
+
+        // Make Firestore functions globally available
+        window.collection = collection;
+        window.onSnapshot = onSnapshot;
+        window.query = query;
+        window.orderBy = orderBy;
+
+        // Tone.js synth voor notificatiegeluid
+        let synth;
+        window.initAudio = async () => {
+            if (!synth) {
+                await Tone.start();
+                synth = new Tone.Synth().toDestination();
+                console.log("Audio context geïnitialiseerd.");
+            }
+        };
+
+        window.playPingSound = () => {
+            if (synth) {
+                synth.triggerAttackRelease("C5", "8n");
+            } else {
+                console.warn("Audio synth is nog niet geïnitialiseerd.");
+            }
+        };
+
+        // Initialize Firebase and set up authentication
+        window.initFirebase = async () => {
+            console.log("initFirebase gestart.");
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
+            window.__app_id = appId;
+            console.log(`App ID ingesteld: ${window.__app_id}`);
+
+            let firebaseConfig = {};
+
+            firebaseConfig = {
+              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+              authDomain: "schkas-66d27.firebaseapp.com",
+              projectId: "schkas-66d27",
+              storageBucket: "schkas-66d27.firebasestorage.app",
+              messagingSenderId: "987453212703",
+              appId: "1:987453212703:web:dcee394027367b74df2d2a"
+            };
+
+            if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken.");
+            }
+
+            window.firebaseApp = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.firebaseApp);
+            window.auth = getAuth(window.firebaseApp);
+            console.log("Firebase app, db, auth geïnitialiseerd.");
+
+            onAuthStateChanged(window.auth, async (user) => {
+                console.log("onAuthStateChanged callback geactiveerd.");
+                if (user) {
+                    window.userId = user.uid;
+                    console.log("Gebruiker geauthenticeerd:", window.userId);
+                } else {
+                    console.log("Geen gebruiker gevonden, probeer anoniem aan te melden.");
+                    try {
+                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        if (__initial_auth_token) {
+                            await signInWithCustomToken(window.auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(window.auth);
+                        }
+                        window.userId = window.auth.currentUser.uid;
+                        console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
+                    } catch (error) {
+                        console.error("Fout tijdens anonieme aanmelding:", error);
+                    }
+                }
+                window.isAuthReady = true;
+                console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`);
+                if (window.userId) {
+                    loadTransactions();
+                } else {
+                    console.warn("Gebruikers-ID niet beschikbaar na authenticatiestatuswijziging. Kan transacties niet laden.");
+                    showLoadingIndicator(false);
+                }
+            });
+        };
+
+        const VAT_RATE = 0.21; // 21%
+
+        /**
+         * Navigeert terug naar de landingspagina.
+         */
+        window.navigateToHome = function() {
+            window.location.href = 'index.html';
+        }
+
+        /**
+         * Toon/verberg de laadindicator.
+         * @param {boolean} show - True om te tonen, false om te verbergen.
+         */
+        function showLoadingIndicator(show) {
+            const indicator = document.getElementById('loadingIndicator');
+            if (indicator) {
+                indicator.style.display = show ? 'flex' : 'none';
+            }
+            window.isLoading = show;
+            console.log(`Laadindicator: ${show ? 'getoond' : 'verborgen'}`);
+        }
+
+        /**
+         * Toont een export feedback bericht.
+         * @param {string} message - Het bericht om te tonen.
+         * @param {boolean} isError - True als het een fout is, false voor succes.
+         */
+        function showExportFeedback(message, isError = false) {
+            const feedbackDiv = document.getElementById('exportFeedback');
+            feedbackDiv.textContent = message;
+            feedbackDiv.className = `export-feedback ${isError ? 'error' : 'success'}`;
+            feedbackDiv.style.display = 'block';
+            setTimeout(() => {
+                feedbackDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        /**
+         * Laadt transacties van Firestore en luistert naar real-time updates.
+         */
+        window.loadTransactions = function() {
+            console.log("loadTransactions gestart op export.html.");
+            showLoadingIndicator(true);
+            if (!window.db) {
+                console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
+                showLoadingIndicator(false);
+                return;
+            }
+
+            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
+            console.log(`Firestore collectie pad: artifacts/${window.__app_id}/public/data/transactions`);
+
+            window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
+                console.log("onSnapshot succes callback geactiveerd op export.html.");
+                window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Transacties geladen/bijgewerkt op export.html:", window.transactions);
+                populateExportCategoryFilter(); // Vul de export categorie filter
+                showLoadingIndicator(false);
+            }, (error) => {
+                console.error("Fout bij laden transacties (onSnapshot error callback) op export.html:", error);
+                showLoadingIndicator(false);
+            });
+
+            document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
+        }
+
+        /**
+         * Vult de multi-select dropdown voor export categorieën met vaste opties.
+         */
+        function populateExportCategoryFilter() {
+            const categorySelect = document.getElementById('exportCategorySelect');
+            const fixedCategories = [
+                { value: 'treatments', text: 'Behandelingen' },
+                { value: 'sales', text: 'Verkoop' },
+                { value: 'expenses', text: 'Uitgaven' }
+            ];
+            
+            let optionsHtml = '';
+            fixedCategories.forEach(cat => {
+                optionsHtml += `<option value="${cat.value}">${cat.text}</option>`;
+            });
+            categorySelect.innerHTML = optionsHtml;
+        }
+
+        /**
+         * Filtert transacties op basis van de geselecteerde datumrange en categorieën.
+         * @returns {Array<Object>} De gefilterde transacties.
+         */
+        function filterTransactionsForExport() {
+            const startDateInput = document.getElementById('exportStartDate');
+            const endDateInput = document.getElementById('exportEndDate');
+            const categorySelect = document.getElementById('exportCategorySelect');
+
+            const startDate = startDateInput.value ? new Date(startDateInput.value) : null;
+            const endDate = endDateInput.value ? new Date(endDateInput.value) : null;
+            const selectedCategories = Array.from(categorySelect.selectedOptions).map(option => option.value);
+
+            return window.transactions.filter(t => {
+                const transactionDate = new Date(t.timestamp);
+
+                // Filter op datum
+                if (startDate && transactionDate < startDate) return false;
+                if (endDate) {
+                    const endOfDay = new Date(endDate);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    if (transactionDate > endOfDay) return false;
+                }
+
+                // Filter op categorie/subcategorie
+                if (selectedCategories.length > 0) {
+                    let matches = false;
+                    if (selectedCategories.includes('treatments') && t.type === 'income' && t.category === 'treatments') {
+                        matches = true;
+                    }
+                    if (selectedCategories.includes('sales') && t.type === 'income' && t.category === 'sales') {
+                        matches = true;
+                    }
+                    if (selectedCategories.includes('expenses') && t.type === 'expense') {
+                        matches = true;
+                    }
+                    if (!matches) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        /**
+         * Exporteert gefilterde transacties naar een CSV-bestand.
+         */
+        window.exportToCsv = function() {
+            const filteredData = filterTransactionsForExport();
+            if (filteredData.length === 0) {
+                showExportFeedback("Geen transacties gevonden voor de geselecteerde criteria om te exporteren.", true);
+                return;
+            }
+
+            const headers = [
+                "Kwartaal", "Type", "Categorie", "Subcategorie", "Betaling", "Bedrag (€)",
+                "Klantnaam", "Productnaam", "Factuurdatum", "Opmerkingen", "Datum Ingave", "Ingevoerd Door"
+            ];
+            const rows = [];
+
+            // Voeg headers toe
+            rows.push(headers.join(';'));
+
+            // Voeg data rijen toe
+            filteredData.forEach(t => {
+                const row = [
+                    t.quarter,
+                    t.type === 'income' ? 'Inkomst' : 'Uitgave',
+                    t.category || '',
+                    t.subcategory || '',
+                    t.paymentMethod || '',
+                    (parseFloat(t.amount) || 0).toFixed(2).replace('.', ','),
+                    t.customerName || '',
+                    t.productName || '',
+                    t.invoiceDate || '',
+                    t.remarks || '',
+                    new Date(t.timestamp).toLocaleDateString('nl-NL'),
+                    t.person || ''
+                ].map(item => `"${String(item).replace(/"/g, '""')}"`);
+                rows.push(row.join(';'));
+            });
+
+            const csvContent = "\uFEFF" + rows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `financieel_overzicht_${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showExportFeedback("CSV export succesvol!");
+        }
+
+        /**
+         * Exporteert gefilterde transacties naar een XLSX-bestand.
+         */
+        window.exportToXlsx = function() {
+            const filteredData = filterTransactionsForExport();
+            if (filteredData.length === 0) {
+                showExportFeedback("Geen transacties gevonden voor de geselecteerde criteria om te exporteren.", true);
+                return;
+            }
+
+            const ws_data = [
+                [
+                    "Kwartaal", "Type", "Categorie", "Subcategorie", "Betaling", "Bedrag (€)",
+                    "Klantnaam", "Productnaam", "Factuurdatum", "Opmerkingen", "Datum Ingave", "Ingevoerd Door"
+                ]
+            ];
+
+            filteredData.forEach(t => {
+                ws_data.push([
+                    t.quarter,
+                    t.type === 'income' ? 'Inkomst' : 'Uitgave',
+                    t.category || '',
+                    t.subcategory || '',
+                    t.paymentMethod || '',
+                    (parseFloat(t.amount) || 0),
+                    t.customerName || '',
+                    t.productName || '',
+                    t.invoiceDate || '',
+                    t.remarks || '',
+                    new Date(t.timestamp).toLocaleDateString('nl-NL'),
+                    t.person || ''
+                ]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Transacties");
+
+            XLSX.writeFile(wb, `financieel_overzicht_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showExportFeedback("XLSX export succesvol!");
+        }
+
+        // Initialiseer de app bij het laden van de pagina
+        window.onload = function() {
+            console.log("Window onload geactiveerd op export.html.");
+            window.initFirebase();
+            window.initAudio();
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Calibri', sans-serif;
+            background-color: #e0f2f7;
+            color: #4a5568;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            flex-direction: column;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            max-width: 900px;
+            width: 100%;
+            text-align: left;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        h1, h2 {
+            color: #2c5282;
+            margin-bottom: 20px;
+            font-size: 2.2rem;
+            text-align: center;
+        }
+        h2 {
+            font-size: 1.8rem;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #4a5568;
+        }
+        input[type="date"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #a0aec0;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        button {
+            background-color: #63b3ed;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #4299e1;
+            transform: translateY(-2px);
+        }
+        .user-id-display {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #718096;
+        }
+        .export-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .export-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .export-feedback {
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 15px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+        }
+        .export-feedback.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .export-feedback.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .loading-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 15px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Financiële Tracker - Export</h1>
+
+        <div class="user-id-display">
+            Je gebruikers-ID: <span id="currentUserId">Laden...</span>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+        </div>
+
+        <div class="export-section">
+            <h2 class="text-xl font-semibold mb-4">Rapport Export</h2>
+            <p class="text-gray-600 mb-4">
+                Exporteer uw financiële gegevens naar CSV of XLSX. Selecteer een periode en optioneel specifieke categorieën.
+                <br>
+                <small class="text-red-600">Let op: Export naar XLSM (met macro's) of PDF is complexer en wordt momenteel niet ondersteund via directe client-side export.</small>
+            </p>
+            <div class="export-controls">
+                <div class="input-group">
+                    <label for="exportStartDate">Startdatum:</label>
+                    <input type="date" id="exportStartDate">
+                </div>
+                <div class="input-group">
+                    <label for="exportEndDate">Einddatum:</label>
+                    <input type="date" id="exportEndDate">
+                </div>
+                <div class="input-group">
+                    <label for="exportCategorySelect">Filter Categorieën (meerdere selecteren met Ctrl/Cmd):</label>
+                    <select id="exportCategorySelect" multiple size="5" class="h-auto">
+                        <!-- Opties worden dynamisch gevuld door JavaScript -->
+                    </select>
+                </div>
+            </div>
+            <div class="export-buttons">
+                <button onclick="exportToCsv()">Exporteer CSV</button>
+                <button onclick="exportToXlsx()">Exporteer XLSX</button>
+            </div>
+            <div id="exportFeedback" class="export-feedback" style="display:none;"></div>
+        </div>
+
+        <div class="back-button-container">
+            <button onclick="navigateToHome()">Terug naar Start</button>
+        </div>
+    </div>
+</body>
+</html>
