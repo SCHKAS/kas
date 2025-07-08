@@ -348,8 +348,7 @@
         /**
          * Navigeert terug naar de landingspagina.
          */
-        // MAAK DEZE FUNCTIE GLOBAAL TOEGANKELIJK
-        window.navigateToHome = function() {
+        window.navigateToHome = function() { // Added window. to make it globally accessible
             // Nu relatief aan de <base> href
             window.location.href = 'index.html';
         }
