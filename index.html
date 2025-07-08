@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financiële Tracker - Start</title>
+    <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -70,16 +71,14 @@
     <script>
         /**
          * Navigeert naar de opgegeven pagina.
-         * Voor een echte applicatie zou dit naar aparte HTML-bestanden leiden.
-         * Hier simuleren we dit door de URL te wijzigen.
+         * De <base> tag zorgt ervoor dat de paden correct zijn.
          * @param {string} page - De naam van de pagina ('input' of 'overview').
          */
         function navigateTo(page) {
-            // Aangepast naar de repositorynaam 'kas'
             if (page === 'input') {
-                window.location.href = '/kas/input.html';
+                window.location.href = 'input.html'; // Nu relatief aan de <base> href
             } else if (page === 'overview') {
-                window.location.href = '/kas/overview.html';
+                window.location.href = 'overview.html'; // Nu relatief aan de <base> href
             }
         }
     </script>
