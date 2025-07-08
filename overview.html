@@ -108,7 +108,8 @@
          * Navigeert terug naar de landingspagina.
          */
         function navigateToHome() {
-            window.location.href = 'index.html';
+            // Aangepast naar de repositorynaam 'kas'
+            window.location.href = '/kas/index.html';
         }
 
         /**
@@ -246,7 +247,7 @@
                 editButton.textContent = 'Bewerken';
                 editButton.className = 'edit-btn';
                 // This will redirect to the input page with the transaction ID
-                editButton.onclick = () => window.location.href = `input.html?editId=${t.id}`;
+                editButton.onclick = () => window.location.href = `/kas/input.html?editId=${t.id}`; // Aangepast naar /kas/input.html
                 actionsCell.appendChild(editButton);
 
                 const deleteButton = document.createElement('button');
