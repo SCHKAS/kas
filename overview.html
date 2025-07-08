@@ -5,7 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financiële Tracker - Overzicht</title>
     <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
+    <link rel="manifest" href="manifest.json"> <!-- Link naar het PWA manifest bestand -->
+    <script>
+        // Registreer de Service Worker voor PWA functionaliteit
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js voor geluidseffecten -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
     <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -19,6 +34,7 @@
         window.userId = null;
         window.isAuthReady = false;
         window.transactions = []; // Store transactions globally
+        window.isLoading = false; // Nieuwe globale variabele voor laadstatus
 
         // Make Firestore functions globally available
         window.collection = collection;
@@ -29,6 +45,25 @@
         window.deleteDoc = deleteDoc;
         window.query = query;
         window.orderBy = orderBy;
+
+        // Tone.js synth voor notificatiegeluid
+        let synth;
+        window.initAudio = async () => {
+            if (!synth) {
+                // Initialiseer Tone.js context en synth
+                await Tone.start();
+                synth = new Tone.Synth().toDestination();
+                console.log("Audio context geïnitialiseerd.");
+            }
+        };
+
+        window.playPingSound = () => {
+            if (synth) {
+                synth.triggerAttackRelease("C5", "8n"); // Speel een korte C5 noot
+            } else {
+                console.warn("Audio synth is nog niet geïnitialiseerd.");
+            }
+        };
 
 
         // Initialize Firebase and set up authentication
@@ -114,11 +149,25 @@
         }
 
         /**
+         * Toon/verberg de laadindicator.
+         * @param {boolean} show - True om te tonen, false om te verbergen.
+         */
+        function showLoadingIndicator(show) {
+            const indicator = document.getElementById('loadingIndicator');
+            if (indicator) {
+                indicator.style.display = show ? 'flex' : 'none';
+            }
+            window.isLoading = show;
+        }
+
+        /**
          * Laadt transacties van Firestore en luistert naar real-time updates.
          */
         window.loadTransactions = function() {
+            showLoadingIndicator(true); // Toon laadindicator
             if (!window.db || !window.userId) {
                 console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transacties niet laden.");
+                showLoadingIndicator(false); // Verberg laadindicator bij fout
                 return;
             }
 
@@ -131,8 +180,10 @@
                 displaySummary();
                 renderTransactionList();
                 generateReports(); // Generate reports after data is loaded
+                showLoadingIndicator(false); // Verberg laadindicator na succesvol laden
             }, (error) => {
                 console.error("Fout bij laden transacties:", error);
+                showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
             document.getElementById('currentUserId').textContent = window.userId;
@@ -268,15 +319,21 @@
                 console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transactie niet verwijderen.");
                 return;
             }
-            if (!confirm("Weet je zeker dat je deze transactie wilt verwijderen?")) {
+            // Vervang confirm() door een custom modal UI
+            const confirmDelete = await showCustomConfirm("Weet je zeker dat je deze transactie wilt verwijderen?");
+            if (!confirmDelete) {
                 return;
             }
+            showLoadingIndicator(true); // Toon laadindicator
             try {
                 const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`, id);
                 await window.deleteDoc(transactionRef);
                 console.log("Transactie succesvol verwijderd:", id);
+                window.playPingSound(); // Speel geluid na succesvolle verwijdering
             } catch (e) {
                 console.error("Fout bij verwijderen transactie:", e);
+            } finally {
+                showLoadingIndicator(false); // Verberg laadindicator altijd aan het einde
             }
         }
 
@@ -358,10 +415,45 @@
             reportContainer.innerHTML = html;
         }
 
+        /**
+         * Toont een custom bevestigingsdialoog.
+         * @param {string} message - Het bericht dat getoond moet worden.
+         * @returns {Promise<boolean>} - Resolves met true als de gebruiker bevestigt, false anders.
+         */
+        function showCustomConfirm(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('customConfirmModal');
+                const modalMessage = document.getElementById('customConfirmMessage');
+                const confirmButton = document.getElementById('customConfirmButton');
+                const cancelButton = document.getElementById('customCancelButton');
+
+                modalMessage.textContent = message;
+                modal.style.display = 'flex'; // Toon de modal
+
+                const handleConfirm = () => {
+                    modal.style.display = 'none';
+                    confirmButton.removeEventListener('click', handleConfirm);
+                    cancelButton.removeEventListener('click', handleCancel);
+                    resolve(true);
+                };
+
+                const handleCancel = () => {
+                    modal.style.display = 'none';
+                    confirmButton.removeEventListener('click', handleConfirm);
+                    cancelButton.removeEventListener('click', handleCancel);
+                    resolve(false);
+                };
+
+                confirmButton.addEventListener('click', handleConfirm);
+                cancelButton.addEventListener('click', handleCancel);
+            });
+        }
+
 
         // Initialiseer de app bij het laden van de pagina
         window.onload = function() {
             window.initFirebase(); // Initialiseer Firebase
+            window.initAudio(); // Initialiseer audio context
             // De dropdown voor kwartaaloverzicht wordt geladen via loadTransactions -> updateQuarterOptions
         };
     </script>
@@ -389,6 +481,7 @@
             width: 100%;
             text-align: left;
             margin-bottom: 20px; /* Space before next container */
+            position: relative; /* Voor de laadindicator */
         }
         h1, h2 {
             color: #2c5282; /* Darker blue for headings */
@@ -598,6 +691,150 @@
             text-align: center;
             margin-top: 30px;
         }
+
+        /* Loading Indicator Styling */
+        .loading-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 15px; /* Match container border-radius */
+        }
+        .spinner {
+            border: 4px solid #f3f3f3; /* Light grey */
+            border-top: 4px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom Modal for Confirm */
+        .custom-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .custom-modal-content {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .custom-modal-content p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            color: #4a5568;
+        }
+        .custom-modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        .custom-modal-buttons button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-shadow: none; /* Remove extra shadow for modal buttons */
+            margin-top: 0; /* Override default button margin-top */
+        }
+        .custom-modal-buttons button.confirm-btn {
+            background-color: #48bb78; /* Green for confirm */
+        }
+        .custom-modal-buttons button.confirm-btn:hover {
+            background-color: #38a169;
+        }
+        .custom-modal-buttons button.cancel-btn {
+            background-color: #fc8181; /* Red for cancel */
+        }
+        .custom-modal-buttons button.cancel-btn:hover {
+            background-color: #e53e3e;
+        }
+
+        /* Responsive Table */
+        .table-responsive {
+            overflow-x: auto; /* Maak de tabel horizontaal scrollbaar op kleine schermen */
+            -webkit-overflow-scrolling: touch; /* Verbeterd scrollen op iOS */
+        }
+        @media (max-width: 768px) {
+            .transaction-table, .transaction-table thead, .transaction-table tbody, .transaction-table th, .transaction-table td, .transaction-table tr {
+                display: block; /* Stapel tabel elementen */
+            }
+            .transaction-table thead tr {
+                position: absolute;
+                top: -9999px; /* Verberg thead visueel, maar houd het toegankelijk */
+                left: -9999px;
+            }
+            .transaction-table tr {
+                border: 1px solid #e2e8f0;
+                margin-bottom: 15px;
+                border-radius: 8px;
+                overflow: hidden;
+            }
+            .transaction-table td {
+                border: none; /* Verwijder individuele celranden */
+                border-bottom: 1px solid #eee; /* Voeg een scheidingslijn toe tussen rijen */
+                position: relative;
+                padding-left: 50%; /* Ruimte voor de "label" */
+                text-align: right;
+                white-space: normal; /* Sta tekstterugloop toe */
+                overflow: visible; /* Zorg dat inhoud zichtbaar is */
+                text-overflow: clip; /* Voorkom ellipsis */
+            }
+            .transaction-table td:before {
+                /* Maak het "label" van de kolomkop */
+                content: attr(data-label);
+                position: absolute;
+                left: 6px;
+                width: 45%;
+                padding-right: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: bold;
+                color: #2d3748;
+            }
+            .transaction-table td:last-child {
+                border-bottom: none; /* Geen rand aan de laatste cel */
+            }
+            .transaction-table td:nth-child(1):before { content: "Kwartaal:"; }
+            .transaction-table td:nth-child(2):before { content: "Type:"; }
+            .transaction-table td:nth-child(3):before { content: "Categorie:"; }
+            .transaction-table td:nth-child(4):before { content: "Subcategorie:"; }
+            .transaction-table td:nth-child(5):before { content: "Betaling:"; }
+            .transaction-table td:nth-child(6):before { content: "Bedrag (€):"; }
+            .transaction-table td:nth-child(7):before { content: "Klantnaam:"; }
+            .transaction-table td:nth-child(8):before { content: "Productnaam:"; }
+            .transaction-table td:nth-child(9):before { content: "Factuurdatum:"; }
+            .transaction-table td:nth-child(10):before { content: "Opmerkingen:"; }
+            .transaction-table td:nth-child(11):before { content: "Datum Ingave:"; }
+            .transaction-table td:nth-child(12):before { content: "Ingevoerd Door:"; }
+            .transaction-table td:nth-child(13):before { content: "Acties:"; }
+
+            .transaction-table td button {
+                width: 100%;
+                margin-bottom: 5px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -606,6 +843,22 @@
 
         <div class="user-id-display">
             Je gebruikers-ID: <span id="currentUserId">Laden...</span>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+        </div>
+
+        <!-- Custom Confirm Modal -->
+        <div id="customConfirmModal" class="custom-modal-overlay" style="display: none;">
+            <div class="custom-modal-content">
+                <p id="customConfirmMessage"></p>
+                <div class="custom-modal-buttons">
+                    <button id="customConfirmButton" class="confirm-btn">Ja</button>
+                    <button id="customCancelButton" class="cancel-btn">Annuleren</button>
+                </div>
+            </div>
         </div>
 
         <div class="summary-section">
@@ -669,28 +922,30 @@
 
         <div class="transaction-list-section">
             <h2 class="text-xl font-semibold mb-4">Alle Transacties</h2>
-            <table class="transaction-table">
-                <thead>
-                    <tr>
-                        <th>Kwartaal</th>
-                        <th>Type</th>
-                        <th>Categorie</th>
-                        <th>Subcategorie</th>
-                        <th>Betaling</th>
-                        <th>Bedrag (€)</th>
-                        <th>Klantnaam</th>
-                        <th>Productnaam</th>
-                        <th>Factuurdatum</th>
-                        <th>Opmerkingen</th>
-                        <th>Datum Ingave</th>
-                        <th>Ingevoerd Door</th>
-                        <th>Acties</th>
-                    </tr>
-                </thead>
-                <tbody id="transactionListBody">
-                    <!-- Transacties worden hier dynamisch toegevoegd -->
-                </tbody>
-            </table>
+            <div class="table-responsive"> <!-- Wrapper voor scrollen op mobiel -->
+                <table class="transaction-table">
+                    <thead>
+                        <tr>
+                            <th>Kwartaal</th>
+                            <th>Type</th>
+                            <th>Categorie</th>
+                            <th>Subcategorie</th>
+                            <th>Betaling</th>
+                            <th>Bedrag (€)</th>
+                            <th>Klantnaam</th>
+                            <th>Productnaam</th>
+                            <th>Factuurdatum</th>
+                            <th>Opmerkingen</th>
+                            <th>Datum Ingave</th>
+                            <th>Ingevoerd Door</th>
+                            <th>Acties</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionListBody">
+                        <!-- Transacties worden hier dynamisch toegevoegd -->
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div class="back-button-container">

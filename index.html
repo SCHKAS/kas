@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financiële Tracker - Start</title>
     <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
+    <link rel="manifest" href="manifest.json"> <!-- Link naar het PWA manifest bestand -->
+    <script>
+        // Registreer de Service Worker voor PWA functionaliteit
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {

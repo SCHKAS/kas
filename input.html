@@ -5,7 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financiële Tracker - Invoer</title>
     <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
+    <link rel="manifest" href="manifest.json"> <!-- Link naar het PWA manifest bestand -->
+    <script>
+        // Registreer de Service Worker voor PWA functionaliteit
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js voor geluidseffecten -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
     <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -19,6 +34,7 @@
         window.userId = null;
         window.isAuthReady = false;
         window.transactions = []; // Store transactions globally for consistency and editing purposes
+        window.isLoading = false; // Nieuwe globale variabele voor laadstatus
 
         // Make Firestore functions globally available
         window.collection = collection;
@@ -29,6 +45,25 @@
         window.deleteDoc = deleteDoc;
         window.query = query;
         window.orderBy = orderBy;
+
+        // Tone.js synth voor notificatiegeluid
+        let synth;
+        window.initAudio = async () => {
+            if (!synth) {
+                // Initialiseer Tone.js context en synth
+                await Tone.start();
+                synth = new Tone.Synth().toDestination();
+                console.log("Audio context geïnitialiseerd.");
+            }
+        };
+
+        window.playPingSound = () => {
+            if (synth) {
+                synth.triggerAttackRelease("C5", "8n"); // Speel een korte C5 noot
+            } else {
+                console.warn("Audio synth is nog niet geïnitialiseerd.");
+            }
+        };
 
 
         // Initialize Firebase and set up authentication
@@ -319,6 +354,18 @@
         }
 
         /**
+         * Toon/verberg de laadindicator.
+         * @param {boolean} show - True om te tonen, false om te verbergen.
+         */
+        function showLoadingIndicator(show) {
+            const indicator = document.getElementById('loadingIndicator');
+            if (indicator) {
+                indicator.style.display = show ? 'flex' : 'none';
+            }
+            window.isLoading = show;
+        }
+
+        /**
          * Voegt een nieuwe rij toe voor bulktransactie-invoer.
          * @param {object} [transaction] - Optioneel transactieobject om de rij mee te vullen (voor bewerken).
          */
@@ -411,7 +458,7 @@
                     }
                 } else { // expense
                     invoiceDateInput.value = transaction.invoiceDate || '';
-                    remarksInput.value = remarksInput.value || ''; // Fixed: Use remarksInput.value instead of transaction.remarks
+                    remarksInput.value = transaction.remarks || '';
                 }
             }
 
@@ -436,77 +483,81 @@
          * Handelt het toevoegen van meerdere transacties vanuit de bulk-invoer.
          */
         window.handleBulkTransactions = async function() {
-            const bulkRows = document.querySelectorAll('.bulk-transaction-row');
-            const transactionsToSave = [];
-            let hasErrors = false;
-
-            if (!window.db || !window.userId) {
-                console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd.");
-                return;
-            }
-
-            for (const row of bulkRows) {
-                const rowIdElement = row.querySelector('[id^="transactionIdToEdit_"]');
-                const rowId = rowIdElement ? rowIdElement.value : null; // Get the ID, if it exists
-
-                const quarter = row.querySelector('[id^="quarterSelect_"]').value;
-                const type = row.querySelector('[id^="typeSelect_"]').value;
-                const incomeCategorySelect = row.querySelector('[id^="incomeCategorySelect_"]');
-                const subcategory = row.querySelector('[id^="subcategorySelect_"]').value;
-                const paymentMethod = row.querySelector('[id^="paymentMethodSelect_"]').value;
-                const amountInput = row.querySelector('[id^="amountInput_"]');
-                const person = row.querySelector('[id^="personInput_"]').value;
-                const customerNameInput = row.querySelector('[id^="customerNameInput_"]');
-                const productNameInput = row.querySelector('[id^="productNameInput_"]');
-                const invoiceDateInput = row.querySelector('[id^="invoiceDateInput_"]');
-                const remarksInput = row.querySelector('[id^="remarksInput_"]');
-                const amountError = row.querySelector('[id^="amountError_"]');
-
-                const amount = parseFloat(amountInput.value);
-
-                if (isNaN(amount) || amount <= 0) {
-                    amountError.style.display = 'block';
-                    hasErrors = true;
-                    continue; // Skip to next row if amount is invalid
-                } else {
-                    amountError.style.display = 'none';
-                }
-
-                let transactionData = {
-                    quarter: quarter,
-                    type: type,
-                    paymentMethod: paymentMethod,
-                    amount: amount,
-                    timestamp: new Date().toISOString(), // Automatisch gegenereerde datum
-                    person: person,
-                    subcategory: subcategory
-                };
-
-                if (type === 'income') {
-                    transactionData.category = incomeCategorySelect.value;
-                    if (incomeCategorySelect.value === 'treatments') {
-                        transactionData.customerName = customerNameInput.value.trim();
-                    } else if (incomeCategorySelect.value === 'sales') {
-                        transactionData.productName = productNameInput.value.trim();
-                    }
-                } else { // expense
-                    transactionData.category = 'N.v.t.';
-                    transactionData.invoiceDate = invoiceDateInput.value;
-                    transactionData.remarks = remarksInput.value.trim();
-                }
-                transactionsToSave.push({ id: rowId, data: transactionData });
-            }
-
-            if (hasErrors) {
-                console.error("Sommige bulktransacties bevatten fouten. Controleer de gemarkeerde velden.");
-                return;
-            }
-            if (transactionsToSave.length === 0) {
-                console.warn("Geen transacties om toe te voegen.");
-                return;
-            }
-
+            showLoadingIndicator(true); // Toon laadindicator
             try {
+                const bulkRows = document.querySelectorAll('.bulk-transaction-row');
+                const transactionsToSave = [];
+                let hasErrors = false;
+
+                if (!window.db || !window.userId) {
+                    console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd.");
+                    showLoadingIndicator(false); // Verberg laadindicator bij fout
+                    return;
+                }
+
+                for (const row of bulkRows) {
+                    const rowIdElement = row.querySelector('[id^="transactionIdToEdit_"]');
+                    const rowId = rowIdElement ? rowIdElement.value : null; // Get the ID, if it exists
+
+                    const quarter = row.querySelector('[id^="quarterSelect_"]').value;
+                    const type = row.querySelector('[id^="typeSelect_"]').value;
+                    const incomeCategorySelect = row.querySelector('[id^="incomeCategorySelect_"]');
+                    const subcategory = row.querySelector('[id^="subcategorySelect_"]').value;
+                    const paymentMethod = row.querySelector('[id^="paymentMethodSelect_"]').value;
+                    const amountInput = row.querySelector('[id^="amountInput_"]');
+                    const person = row.querySelector('[id^="personInput_"]').value;
+                    const customerNameInput = row.querySelector('[id^="customerNameInput_"]');
+                    const productNameInput = row.querySelector('[id^="productNameInput_"]');
+                    const invoiceDateInput = row.querySelector('[id^="invoiceDateInput_"]');
+                    const remarksInput = row.querySelector('[id^="remarksInput_"]');
+                    const amountError = row.querySelector('[id^="amountError_"]');
+
+                    const amount = parseFloat(amountInput.value);
+
+                    if (isNaN(amount) || amount <= 0) {
+                        amountError.style.display = 'block';
+                        hasErrors = true;
+                        continue; // Skip to next row if amount is invalid
+                    } else {
+                        amountError.style.display = 'none';
+                    }
+
+                    let transactionData = {
+                        quarter: quarter,
+                        type: type,
+                        paymentMethod: paymentMethod,
+                        amount: amount,
+                        timestamp: new Date().toISOString(), // Automatisch gegenereerde datum
+                        person: person,
+                        subcategory: subcategory
+                    };
+
+                    if (type === 'income') {
+                        transactionData.category = incomeCategorySelect.value;
+                        if (incomeCategorySelect.value === 'treatments') {
+                            transactionData.customerName = customerNameInput.value.trim();
+                        } else if (incomeCategorySelect.value === 'sales') {
+                            transactionData.productName = productNameInput.value.trim();
+                        }
+                    } else { // expense
+                        transactionData.category = 'N.v.t.';
+                        transactionData.invoiceDate = invoiceDateInput.value;
+                        transactionData.remarks = remarksInput.value.trim();
+                    }
+                    transactionsToSave.push({ id: rowId, data: transactionData });
+                }
+
+                if (hasErrors) {
+                    console.error("Sommige bulktransacties bevatten fouten. Controleer de gemarkeerde velden.");
+                    showLoadingIndicator(false); // Verberg laadindicator bij fout
+                    return;
+                }
+                if (transactionsToSave.length === 0) {
+                    console.warn("Geen transacties om toe te voegen.");
+                    showLoadingIndicator(false); // Verberg laadindicator als er niets te doen is
+                    return;
+                }
+
                 const transactionsCollection = window.collection(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`);
                 const promises = transactionsToSave.map(item => {
                     // If item.id exists and is not a temporary 'bulkRow_' ID, it's an existing transaction being edited
@@ -519,6 +570,7 @@
                 });
                 await Promise.all(promises);
                 console.log(`${transactionsToSave.length} transacties succesvol toegevoegd/bijgewerkt.`);
+                window.playPingSound(); // Speel geluid na succesvolle invoer
 
                 // Clear all bulk input rows after successful submission and add one new empty row
                 document.getElementById('bulkTransactionContainer').innerHTML = '';
@@ -526,6 +578,8 @@
 
             } catch (e) {
                 console.error("Fout bij het toevoegen/bijwerken van bulktransacties:", e);
+            } finally {
+                showLoadingIndicator(false); // Verberg laadindicator altijd aan het einde
             }
         }
 
@@ -535,8 +589,10 @@
          * Op deze pagina wordt alleen de data geladen, niet weergegeven.
          */
         window.loadTransactions = function() {
+            showLoadingIndicator(true); // Toon laadindicator
             if (!window.db || !window.userId) {
                 console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transacties niet laden.");
+                showLoadingIndicator(false); // Verberg laadindicator bij fout
                 return;
             }
 
@@ -565,9 +621,10 @@
                     // Only add a default row if no rows are present and no editId was found
                     window.addBulkTransactionRow();
                 }
-
+                showLoadingIndicator(false); // Verberg laadindicator na succesvol laden
             }, (error) => {
                 console.error("Fout bij laden transacties:", error);
+                showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
             document.getElementById('currentUserId').textContent = window.userId;
@@ -577,8 +634,7 @@
         // Initialiseer de app bij het laden van de pagina
         window.onload = function() {
             window.initFirebase(); // Initialiseer Firebase
-            // addBulkTransactionRow() is nu verplaatst naar loadTransactions om te zorgen dat
-            // transacties eerst geladen zijn voordat we proberen te bewerken.
+            window.initAudio(); // Initialiseer audio context
         };
     </script>
     <style>
@@ -603,6 +659,7 @@
             max-width: 900px; /* Bredere container */
             width: 100%;
             text-align: left;
+            position: relative; /* Voor de laadindicator */
         }
         h1, h2 {
             color: #2c5282; /* Darker blue for headings */
@@ -777,11 +834,28 @@
             background-color: #ffffff;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
             position: relative; /* For delete button positioning */
+            display: grid; /* Gebruik grid voor betere mobiele lay-out */
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Flexibele kolommen */
+            gap: 10px; /* Ruimte tussen grid items */
+        }
+        /* Zorg dat input-group de volledige breedte inneemt in de grid */
+        .bulk-transaction-row .input-group {
+            grid-column: span 1; /* Standaard 1 kolom */
+            margin-bottom: 0; /* Geen extra margin, grid beheert spacing */
+        }
+        /* Sommige velden kunnen op mobiel de volledige breedte innemen */
+        @media (max-width: 640px) {
+            .bulk-transaction-row .input-group {
+                grid-column: span 2; /* Op kleine schermen 2 kolommen (volledige breedte als de grid 2 kolommen heeft) */
+            }
+            .bulk-transaction-row {
+                grid-template-columns: 1fr; /* Op zeer kleine schermen, stapel alles verticaal */
+            }
+            .bulk-transaction-row .input-group {
+                grid-column: span 1; /* Zorg dat ze de volledige breedte innemen in de 1-kolom grid */
+            }
         }
 
-        .bulk-transaction-row .input-group {
-            margin-bottom: 10px;
-        }
 
         .bulk-transaction-row .remove-row-btn {
             background-color: #ef4444; /* Red for remove button */
@@ -792,6 +866,7 @@
             font-size: 0.8rem;
             border-radius: 5px;
             box-shadow: none;
+            z-index: 10; /* Zorg dat de knop boven de andere elementen ligt */
         }
         .bulk-transaction-row .remove-row-btn:hover {
             background-color: #dc2626;
@@ -799,8 +874,42 @@
         }
         .bulk-buttons {
             display: flex;
-            justify-content: space-between;
+            flex-direction: column; /* Stack buttons on small screens */
+            gap: 10px; /* Space between buttons */
             margin-top: 20px;
+        }
+        @media (min-width: 640px) {
+            .bulk-buttons {
+                flex-direction: row; /* Row on larger screens */
+                justify-content: space-between;
+            }
+        }
+
+        /* Loading Indicator Styling */
+        .loading-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 15px; /* Match container border-radius */
+        }
+        .spinner {
+            border: 4px solid #f3f3f3; /* Light grey */
+            border-top: 4px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -810,6 +919,11 @@
 
         <div class="user-id-display">
             Je gebruikers-ID: <span id="currentUserId">Laden...</span>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
         </div>
 
         <!-- Bulk Input Section (now the main input) -->

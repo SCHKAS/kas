@@ -1,0 +1,33 @@
+{
+    "name": "Financiële Tracker",
+    "short_name": "Kas App",
+    "description": "Een eenvoudige financiële tracker voor inkomsten en uitgaven.",
+    "start_url": "/kas/index.html",
+    "display": "standalone",
+    "background_color": "#e0f2f7",
+    "theme_color": "#2c5282",
+    "icons": [
+        {
+            "src": "/kas/icons/icon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/kas/icons/icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "/kas/icons/icon-maskable-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/kas/icons/icon-maskable-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
