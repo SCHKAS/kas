@@ -68,9 +68,11 @@
 
         // Initialize Firebase and set up authentication
         window.initFirebase = async () => {
+            console.log("initFirebase gestart."); // Debug log
             // Updated app ID for this version to ensure data separation
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
             window.__app_id = appId; // Make it globally accessible for Firestore paths
+            console.log(`App ID ingesteld: ${window.__app_id}`); // Debug log
 
             let firebaseConfig = {};
 
@@ -95,14 +97,16 @@
             window.firebaseApp = initializeApp(firebaseConfig);
             window.db = getFirestore(window.firebaseApp);
             window.auth = getAuth(window.firebaseApp);
+            console.log("Firebase app, db, auth geïnitialiseerd."); // Debug log
 
             // Listen for authentication state changes
             onAuthStateChanged(window.auth, async (user) => {
+                console.log("onAuthStateChanged callback geactiveerd."); // Debug log
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
                 } else {
-                    // Meld anoniem aan als er geen gebruiker is ingelogd
+                    console.log("Geen gebruiker gevonden, probeer anoniem aan te melden."); // Debug log
                     try {
                         const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                         if (__initial_auth_token) {
@@ -117,6 +121,7 @@
                     }
                 }
                 window.isAuthReady = true;
+                console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`); // Debug log
                 // Zodra authenticatie klaar is, laad transacties
                 if (window.userId) {
                     loadTransactions();
@@ -159,12 +164,14 @@
                 indicator.style.display = show ? 'flex' : 'none';
             }
             window.isLoading = show;
+            console.log(`Laadindicator: ${show ? 'getoond' : 'verborgen'}`); // Debug log
         }
 
         /**
          * Laadt transacties van Firestore en luistert naar real-time updates.
          */
         window.loadTransactions = function() {
+            console.log("loadTransactions gestart."); // Debug log
             showLoadingIndicator(true); // Toon laadindicator
             if (!window.db) {
                 console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
@@ -174,9 +181,11 @@
 
             // Gebruik het gedeelde pad voor de collectie
             const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
+            console.log(`Firestore collectie pad: artifacts/${window.__app_id}/public/data/transactions`); // Debug log
 
             // Gebruik onSnapshot om real-time updates te krijgen
             window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
+                console.log("onSnapshot succes callback geactiveerd."); // Debug log
                 window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 console.log("Transacties geladen/bijgewerkt:", window.transactions);
                 updateQuarterOptions();
@@ -185,7 +194,7 @@
                 generateReports(); // Generate reports after data is loaded
                 showLoadingIndicator(false); // Verberg laadindicator na succesvol laden
             }, (error) => {
-                console.error("Fout bij laden transacties (onSnapshot error callback):", error);
+                console.error("Fout bij laden transacties (onSnapshot error callback):", error); // Debug log
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
@@ -651,11 +660,22 @@
             margin-bottom: 20px; /* Space before next container */
             position: relative; /* Voor de laadindicator */
         }
-        h1, h2 {
-            color: #2c5282; /* Darker blue for headings */
+        .header-container {
+            display: flex;
+            align-items: center;
             margin-bottom: 20px;
+        }
+        .header-container .logo-small {
+            max-width: 80px; /* Kleinere grootte voor logo op andere pagina's */
+            height: auto;
+            margin-right: 20px;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #2c5282; /* Darker blue for headings */
             font-size: 2.2rem;
-            text-align: center;
+            flex-grow: 1; /* Neemt resterende ruimte in */
+            text-align: center; /* Centreer de titel */
         }
         h2 {
             font-size: 1.8rem;
@@ -1008,7 +1028,10 @@
 </head>
 <body>
     <div class="container">
-        <h1>Financiële Overzicht</h1>
+        <div class="header-container">
+            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small">
+            <h1>Financiële Overzicht</h1>
+        </div>
 
         <div class="user-id-display">
             Je gebruikers-ID: <span id="currentUserId">Laden...</span>

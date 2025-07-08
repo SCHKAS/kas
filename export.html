@@ -371,10 +371,21 @@
             margin-bottom: 20px;
             position: relative;
         }
-        h1, h2 {
-            color: #2c5282;
+        .header-container {
+            display: flex;
+            align-items: center;
             margin-bottom: 20px;
+        }
+        .header-container .logo-small {
+            max-width: 80px; /* Kleinere grootte voor logo op andere pagina's */
+            height: auto;
+            margin-right: 20px;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #2c5282;
             font-size: 2.2rem;
+            flex-grow: 1;
             text-align: center;
         }
         h2 {
@@ -479,7 +490,10 @@
 </head>
 <body>
     <div class="container">
-        <h1>Financiële Tracker - Export</h1>
+        <div class="header-container">
+            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small">
+            <h1>Financiële Tracker - Export</h1>
+        </div>
 
         <div class="user-id-display">
             Je gebruikers-ID: <span id="currentUserId">Laden...</span>

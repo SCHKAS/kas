@@ -130,6 +130,15 @@
             width: 100%;
             text-align: center;
         }
+        .logo-container {
+            text-align: center;
+            margin-bottom: 30px; /* Ruimte onder het logo */
+        }
+        .logo-container img {
+            max-width: 200px; /* Maximale breedte voor het logo */
+            height: auto;
+            border-radius: 8px; /* Afgeronde hoeken voor het logo */
+        }
         h1 {
             color: #2c5282;
             margin-bottom: 30px;
@@ -195,6 +204,9 @@
 </head>
 <body>
     <div class="container">
+        <div class="logo-container">
+            <img src="Black logo - no background.png" alt="Bedrijfslogo">
+        </div>
         <h1>Financiële Tracker</h1>
         <div class="user-id-display">
             Je gebruikers-ID: <span id="currentUserId">Laden...</span>
