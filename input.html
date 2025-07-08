@@ -108,7 +108,7 @@
                         if (__initial_auth_token) {
                             await signInWithCustomToken(window.auth, __initial_auth_token);
                         } else {
-                            await signInAnonymously(window.auth); // Terug naar anonieme aanmelding
+                            await signInAnonymously(window.auth);
                         }
                         window.userId = window.auth.currentUser.uid;
                         console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
@@ -348,7 +348,8 @@
         /**
          * Navigeert terug naar de landingspagina.
          */
-        function navigateToHome() {
+        // MAAK DEZE FUNCTIE GLOBAAL TOEGANKELIJK
+        window.navigateToHome = function() {
             // Nu relatief aan de <base> href
             window.location.href = 'index.html';
         }
