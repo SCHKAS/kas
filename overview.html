@@ -143,7 +143,6 @@
         /**
          * Navigeert terug naar de landingspagina.
          */
-        // MAAK DEZE FUNCTIE GLOBAAL TOEGANKELIJK
         window.navigateToHome = function() {
             // Nu relatief aan de <base> href
             window.location.href = 'index.html';
@@ -166,13 +165,13 @@
          */
         window.loadTransactions = function() {
             showLoadingIndicator(true); // Toon laadindicator
-            if (!window.db) { // userId is niet langer nodig voor het pad
+            if (!window.db) {
                 console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
                 return;
             }
 
-            // AANGEPAST: Gebruik nu het gedeelde pad voor de collectie
+            // Gebruik het gedeelde pad voor de collectie
             const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
             // Gebruik onSnapshot om real-time updates te krijgen
             window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
@@ -188,7 +187,6 @@
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
-            // userId display kan nu een algemene boodschap zijn, of verwijderd worden als het niet relevant is voor gedeelde data
             document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
         }
 
@@ -339,7 +337,7 @@
          * @param {string} id - De ID van de transactie die verwijderd moet worden.
          */
         window.deleteTransaction = async function(id) {
-            if (!window.db) { // userId is niet langer nodig voor het pad
+            if (!window.db) {
                 console.error("Firestore is niet geïnitialiseerd. Kan transactie niet verwijderen.");
                 return;
             }
@@ -350,7 +348,7 @@
             }
             showLoadingIndicator(true); // Toon laadindicator
             try {
-                // AANGEPAST: Gebruik nu het gedeelde pad voor de collectie
+                // Gebruik het gedeelde pad voor de collectie
                 const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/public/data/transactions`, id);
                 await window.deleteDoc(transactionRef);
                 console.log("Transactie succesvol verwijderd:", id);
@@ -366,9 +364,17 @@
          * Genereert en toont verschillende rapporten.
          */
         function generateReports() {
-            const incomeTransactions = window.transactions.filter(t => t.type === 'income');
-            const expenseTransactions = window.transactions.filter(t => t.type === 'expense');
+            const currentQuarterSelect = document.getElementById('summaryQuarterSelect');
+            const selectedQuarter = currentQuarterSelect.value;
 
+            const filteredTransactions = selectedQuarter === 'all'
+                ? window.transactions
+                : window.transactions.filter(t => t.quarter === selectedQuarter);
+
+            const incomeTransactions = filteredTransactions.filter(t => t.type === 'income');
+            const expenseTransactions = filteredTransactions.filter(t => t.type === 'expense');
+
+            // Huidige rapporten
             // 1. Meest verkochte producten
             const productSales = {};
             incomeTransactions.filter(t => t.category === 'sales' && t.productName).forEach(t => {
@@ -406,6 +412,93 @@
                 monthlyIncome[monthYear] = (monthlyIncome[monthYear] || 0) + t.amount;
             });
             renderReport('highestMonthlyIncome', 'Hoogste Maandinkomsten', monthlyIncome, 'amount', true);
+
+            // NIEUWE RAPPORTEN
+
+            // 1. Uitgaven per Categorie (met percentages)
+            const expensesByCategory = {};
+            let totalExpensesForPercentage = 0;
+            expenseTransactions.forEach(t => {
+                expensesByCategory[t.subcategory] = (expensesByCategory[t.subcategory] || 0) + t.amount;
+                totalExpensesForPercentage += t.amount;
+            });
+
+            const expensesWithPercentages = Object.entries(expensesByCategory).map(([category, amount]) => {
+                const percentage = totalExpensesForPercentage > 0 ? (amount / totalExpensesForPercentage * 100).toFixed(2) : 0;
+                return { key: category, value: `${amount.toFixed(2)} (€) (${percentage}%)` };
+            }).sort((a, b) => parseFloat(b.value) - parseFloat(a.value)); // Sort by amount for consistency
+
+            renderCustomReport('expensesByCategory', 'Uitgaven per Categorie', expensesWithPercentages);
+
+            // 2. Inkomsten per Betalingsmethode
+            const incomeByPaymentMethod = {};
+            incomeTransactions.forEach(t => {
+                incomeByPaymentMethod[t.paymentMethod] = (incomeByPaymentMethod[t.paymentMethod] || 0) + t.amount;
+            });
+            renderReport('incomeByPaymentMethod', 'Inkomsten per Betalingsmethode', incomeByPaymentMethod, 'amount', true);
+
+            // 3. Trendanalyse (Maandelijks Overzicht)
+            const monthlyTrends = {}; // { 'YYYY-MM': { income: X, expenses: Y, profit: Z } }
+            filteredTransactions.forEach(t => {
+                const date = new Date(t.timestamp);
+                const year = date.getFullYear();
+                const month = (date.getMonth() + 1).toString().padStart(2, '0'); // MM
+                const monthKey = `${year}-${month}`;
+
+                if (!monthlyTrends[monthKey]) {
+                    monthlyTrends[monthKey] = { income: 0, expenses: 0, profit: 0 };
+                }
+
+                if (t.type === 'income') {
+                    monthlyTrends[monthKey].income += t.amount;
+                } else if (t.type === 'expense') {
+                    monthlyTrends[monthKey].expenses += t.amount;
+                }
+            });
+
+            const monthlyTrendList = Object.entries(monthlyTrends).map(([monthKey, data]) => {
+                const [year, month] = monthKey.split('-');
+                const monthName = new Date(year, parseInt(month) - 1, 1).toLocaleString('nl-NL', { month: 'long' });
+                const profit = data.income - data.expenses - (data.income * VAT_RATE) +
+                                expenseTransactions.filter(e => {
+                                    const eDate = new Date(e.timestamp);
+                                    return eDate.getFullYear() == year && (eDate.getMonth() + 1).toString().padStart(2, '0') == month && RECOVERABLE_VAT_EXPENSE_CATEGORIES.includes(e.subcategory);
+                                }).reduce((sum, e) => sum + (e.amount * VAT_RATE), 0);
+                return {
+                    key: `${monthName} ${year}`,
+                    value: `Ink: €${data.income.toFixed(2)}, Uit: €${data.expenses.toFixed(2)}, Winst: €${profit.toFixed(2)}`
+                };
+            }).sort((a, b) => {
+                // Sort by monthKey (YYYY-MM) to ensure chronological order
+                const monthKeyA = a.key.split(' ')[1] + '-' + (new Date(Date.parse(a.key.split(' ')[0] + ' 1, 2000')).getMonth() + 1).toString().padStart(2, '0');
+                const monthKeyB = b.key.split(' ')[1] + '-' + (new Date(Date.parse(b.key.split(' ')[0] + ' 1, 2000')).getMonth() + 1).toString().padStart(2, '0');
+                return monthKeyA.localeCompare(monthKeyB);
+            });
+
+            renderCustomReport('monthlyTrends', 'Maandelijkse Trends', monthlyTrendList);
+
+
+            // 4. BTW-overzicht (Gedetailleerder)
+            let vatOnIncome = totalIncome * VAT_RATE; // Gebruik totalIncome van displaySummary
+            let recoverableVat = totalRecoverableVATOnExpenses; // Gebruik totalRecoverableVATOnExpenses van displaySummary
+            let netVat = vatOnIncome - recoverableVat;
+
+            const vatReportData = [
+                { key: 'BTW over Inkomsten', value: vatOnIncome.toFixed(2) },
+                { key: 'Terug te vorderen BTW op Uitgaven', value: recoverableVat.toFixed(2) },
+                { key: 'Netto BTW (te betalen/ontvangen)', value: netVat.toFixed(2) }
+            ];
+            renderCustomReport('vatOverview', 'BTW Overzicht', vatReportData.map(item => ({ key: item.key, value: `€ ${item.value}` })));
+
+            // 5. Transacties per Medewerker
+            const transactionsByPerson = {};
+            filteredTransactions.forEach(t => {
+                const personName = t.person || 'Onbekend';
+                transactionsByPerson[personName] = (transactionsByPerson[personName] || 0) + 1; // Count transactions
+                // Of als je de totale waarde per medewerker wilt:
+                // transactionsByPerson[personName] = (transactionsByPerson[personName] || 0) + t.amount;
+            });
+            renderReport('transactionsByPerson', 'Transacties per Medewerker (aantal)', transactionsByPerson, 'count', true);
         }
 
         /**
@@ -433,7 +526,29 @@
                 html += `<li>Geen data beschikbaar.</li>`;
             } else {
                 items.slice(0, 5).forEach(item => { // Toon top 5
-                    html += `<li>${item.key}: ${valueType === 'amount' ? `€ ${item.value.toFixed(2)}` : item.value}</li>`;
+                    html += `<li>${item.key}: <span>${valueType === 'amount' ? `€ ${item.value.toFixed(2)}` : item.value}</span></li>`;
+                });
+            }
+            html += `</ul>`;
+            reportContainer.innerHTML = html;
+        }
+
+        /**
+         * Rendert een rapport met reeds geformatteerde waarden.
+         * @param {string} elementId - De ID van het HTML-element waar het rapport moet worden weergegeven.
+         * @param {string} title - De titel van het rapport.
+         * @param {Array<Object>} items - Een array van objecten { key: string, value: string } met reeds geformatteerde waarden.
+         */
+        function renderCustomReport(elementId, title, items) {
+            const reportContainer = document.getElementById(elementId);
+            if (!reportContainer) return;
+
+            let html = `<h3>${title}</h3><ul>`;
+            if (items.length === 0) {
+                html += `<li>Geen data beschikbaar.</li>`;
+            } else {
+                items.forEach(item => {
+                    html += `<li>${item.key}: <span>${item.value}</span></li>`;
                 });
             }
             html += `</ul>`;
@@ -942,6 +1057,22 @@
                 </div>
                 <div class="report-card">
                     <div id="highestMonthlyIncome"></div>
+                </div>
+                <!-- Nieuwe rapporten -->
+                <div class="report-card">
+                    <div id="expensesByCategory"></div>
+                </div>
+                <div class="report-card">
+                    <div id="incomeByPaymentMethod"></div>
+                </div>
+                <div class="report-card">
+                    <div id="monthlyTrends"></div>
+                </div>
+                <div class="report-card">
+                    <div id="vatOverview"></div>
+                </div>
+                <div class="report-card">
+                    <div id="transactionsByPerson"></div>
                 </div>
             </div>
         </div>
