@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financiële Tracker - Invoer</title>
+    <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Firebase SDK imports -->
     <script type="module">
@@ -313,8 +314,8 @@
          * Navigeert terug naar de landingspagina.
          */
         function navigateToHome() {
-            // Aangepast naar de repositorynaam 'kas'
-            window.location.href = '/kas/index.html';
+            // Nu relatief aan de <base> href
+            window.location.href = 'index.html';
         }
 
         /**
@@ -410,7 +411,7 @@
                     }
                 } else { // expense
                     invoiceDateInput.value = transaction.invoiceDate || '';
-                    remarksInput.value = transaction.remarks || '';
+                    remarksInput.value = remarksInput.value || ''; // Fixed: Use remarksInput.value instead of transaction.remarks
                 }
             }
 
