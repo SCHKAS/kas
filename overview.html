@@ -165,13 +165,14 @@
          */
         window.loadTransactions = function() {
             showLoadingIndicator(true); // Toon laadindicator
-            if (!window.db || !window.userId) {
-                console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transacties niet laden.");
+            if (!window.db) { // userId is niet langer nodig voor het pad
+                console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
                 return;
             }
 
-            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`);
+            // AANGEPAST: Gebruik nu het gedeelde pad voor de collectie
+            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
             // Gebruik onSnapshot om real-time updates te krijgen
             window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
                 window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -186,7 +187,8 @@
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
-            document.getElementById('currentUserId').textContent = window.userId;
+            // userId display kan nu een algemene boodschap zijn, of verwijderd worden als het niet relevant is voor gedeelde data
+            document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
         }
 
         /**
@@ -277,24 +279,45 @@
 
             window.transactions.forEach(t => {
                 const row = transactionListBody.insertRow();
-                row.insertCell().textContent = t.quarter;
-                row.insertCell().textContent = t.type === 'income' ? 'Inkomst' : 'Uitgave';
-                row.insertCell().textContent = t.category || 'N.v.t.'; // Toon categorie of N.v.t.
-                row.insertCell().textContent = t.subcategory || 'N.v.t.'; // Nieuwe kolom voor subcategorie
-                row.insertCell().textContent = t.paymentMethod || 'N.v.t.'; // Now 'Betaling'
-                row.insertCell().textContent = `€ ${t.amount ? t.amount.toFixed(2) : '0.00'}`; // Zorg voor een default waarde
+                // Gebruik data-label attributen voor mobiele weergave
+                row.insertCell().setAttribute('data-label', 'Kwartaal:');
+                row.cells[0].textContent = t.quarter;
 
-                // Nieuwe cellen voor klantnaam, productnaam, factuurdatum, opmerkingen
-                row.insertCell().textContent = t.customerName || 'N.v.t.';
-                row.insertCell().textContent = t.productName || 'N.v.t.';
-                row.insertCell().textContent = t.invoiceDate || 'N.v.t.';
-                row.insertCell().textContent = t.remarks || 'N.v.t.';
+                row.insertCell().setAttribute('data-label', 'Type:');
+                row.cells[1].textContent = t.type === 'income' ? 'Inkomst' : 'Uitgave';
 
+                row.insertCell().setAttribute('data-label', 'Categorie:');
+                row.cells[2].textContent = t.category || 'N.v.t.';
 
-                row.insertCell().textContent = new Date(t.timestamp).toLocaleDateString('nl-NL'); // Geformatteerde datum
-                row.insertCell().textContent = t.person || 'Onbekend'; // Persoon kolom
+                row.insertCell().setAttribute('data-label', 'Subcategorie:');
+                row.cells[3].textContent = t.subcategory || 'N.v.t.';
+
+                row.insertCell().setAttribute('data-label', 'Betaling:');
+                row.cells[4].textContent = t.paymentMethod || 'N.v.t.';
+
+                row.insertCell().setAttribute('data-label', 'Bedrag (€):');
+                row.cells[5].textContent = `€ ${t.amount ? t.amount.toFixed(2) : '0.00'}`;
+
+                row.insertCell().setAttribute('data-label', 'Klantnaam:');
+                row.cells[6].textContent = t.customerName || 'N.v.t.';
+
+                row.insertCell().setAttribute('data-label', 'Productnaam:');
+                row.cells[7].textContent = t.productName || 'N.v.t.';
+
+                row.insertCell().setAttribute('data-label', 'Factuurdatum:');
+                row.cells[8].textContent = t.invoiceDate || 'N.v.t.';
+
+                row.insertCell().setAttribute('data-label', 'Opmerkingen:');
+                row.cells[9].textContent = t.remarks || 'N.v.t.';
+
+                row.insertCell().setAttribute('data-label', 'Datum Ingave:');
+                row.cells[10].textContent = new Date(t.timestamp).toLocaleDateString('nl-NL');
+
+                row.insertCell().setAttribute('data-label', 'Ingevoerd Door:');
+                row.cells[11].textContent = t.person || 'Onbekend';
 
                 const actionsCell = row.insertCell();
+                actionsCell.setAttribute('data-label', 'Acties:'); // Label voor acties
                 const editButton = document.createElement('button');
                 editButton.textContent = 'Bewerken';
                 editButton.className = 'edit-btn';
@@ -315,8 +338,8 @@
          * @param {string} id - De ID van de transactie die verwijderd moet worden.
          */
         window.deleteTransaction = async function(id) {
-            if (!window.db || !window.userId) {
-                console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transactie niet verwijderen.");
+            if (!window.db) { // userId is niet langer nodig voor het pad
+                console.error("Firestore is niet geïnitialiseerd. Kan transactie niet verwijderen.");
                 return;
             }
             // Vervang confirm() door een custom modal UI
@@ -326,7 +349,8 @@
             }
             showLoadingIndicator(true); // Toon laadindicator
             try {
-                const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`, id);
+                // AANGEPAST: Gebruik nu het gedeelde pad voor de collectie
+                const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/public/data/transactions`, id);
                 await window.deleteDoc(transactionRef);
                 console.log("Transactie succesvol verwijderd:", id);
                 window.playPingSound(); // Speel geluid na succesvolle verwijdering
@@ -816,6 +840,7 @@
             .transaction-table td:last-child {
                 border-bottom: none; /* Geen rand aan de laatste cel */
             }
+            /* Specifieke labels voor elke cel op mobiel */
             .transaction-table td:nth-child(1):before { content: "Kwartaal:"; }
             .transaction-table td:nth-child(2):before { content: "Type:"; }
             .transaction-table td:nth-child(3):before { content: "Categorie:"; }

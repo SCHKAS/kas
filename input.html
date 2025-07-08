@@ -108,7 +108,7 @@
                         if (__initial_auth_token) {
                             await signInWithCustomToken(window.auth, __initial_auth_token);
                         } else {
-                            await signInAnonymously(window.auth);
+                            await signInAnonymously(window.auth); // Terug naar anonieme aanmelding
                         }
                         window.userId = window.auth.currentUser.uid;
                         console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
@@ -415,7 +415,7 @@
                     <label for="invoiceDateInput_${rowId}">Factuurdatum:</label>
                     <input type="date" id="invoiceDateInput_${rowId}">
                 </div>
-                <div class="input-group" id="remarksGroup_${rowId}" style="display:none;">
+                <div class="input-group">
                     <label for="remarksInput_${rowId}">Opmerkingen:</label>
                     <textarea id="remarksInput_${rowId}" placeholder="Eventuele opmerkingen"></textarea>
                 </div>
@@ -489,8 +489,8 @@
                 const transactionsToSave = [];
                 let hasErrors = false;
 
-                if (!window.db || !window.userId) {
-                    console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd.");
+                if (!window.db) {
+                    console.error("Firestore is niet geïnitialiseerd.");
                     showLoadingIndicator(false); // Verberg laadindicator bij fout
                     return;
                 }
@@ -558,13 +558,12 @@
                     return;
                 }
 
-                const transactionsCollection = window.collection(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`);
+                const transactionsCollection = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
                 const promises = transactionsToSave.map(item => {
-                    // If item.id exists and is not a temporary 'bulkRow_' ID, it's an existing transaction being edited
                     if (item.id && !item.id.startsWith('bulkRow_')) {
-                        const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`, item.id);
+                        const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/public/data/transactions`, item.id);
                         return window.updateDoc(transactionRef, item.data);
-                    } else { // It's a new transaction (or a temporary ID from a newly added row)
+                    } else {
                         return window.addDoc(transactionsCollection, item.data);
                     }
                 });
@@ -590,19 +589,17 @@
          */
         window.loadTransactions = function() {
             showLoadingIndicator(true); // Toon laadindicator
-            if (!window.db || !window.userId) {
-                console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transacties niet laden.");
+            if (!window.db) {
+                console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
                 return;
             }
 
-            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`);
-            // Gebruik onSnapshot om real-time updates te krijgen
+            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
             window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
                 window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 console.log("Transacties geladen/bijgewerkt:", window.transactions);
 
-                // Check for editId in URL after transactions are loaded
                 const urlParams = new URLSearchParams(window.location.search);
                 const editId = urlParams.get('editId');
 
@@ -611,14 +608,12 @@
                     if (transactionToEdit) {
                         document.getElementById('bulkTransactionContainer').innerHTML = ''; // Clear existing rows
                         window.addBulkTransactionRow(transactionToEdit);
-                        // Remove editId from URL to prevent re-loading on refresh
                         history.replaceState({}, document.title, window.location.pathname);
                     } else {
                         console.warn(`Transactie met ID ${editId} niet gevonden.`);
                         window.addBulkTransactionRow(); // Add a default empty row if not found
                     }
                 } else if (document.querySelectorAll('.bulk-transaction-row').length === 0) {
-                    // Only add a default row if no rows are present and no editId was found
                     window.addBulkTransactionRow();
                 }
                 showLoadingIndicator(false); // Verberg laadindicator na succesvol laden
@@ -627,7 +622,7 @@
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
-            document.getElementById('currentUserId').textContent = window.userId;
+            document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
         }
 
 
