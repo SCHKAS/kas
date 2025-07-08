@@ -68,9 +68,11 @@
 
         // Initialize Firebase and set up authentication
         window.initFirebase = async () => {
+            console.log("initFirebase gestart."); // Debug log
             // Updated app ID for this version to ensure data separation
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
             window.__app_id = appId; // Make it globally accessible for Firestore paths
+            console.log(`App ID ingesteld: ${window.__app_id}`); // Debug log
 
             let firebaseConfig = {};
 
@@ -95,14 +97,16 @@
             window.firebaseApp = initializeApp(firebaseConfig);
             window.db = getFirestore(window.firebaseApp);
             window.auth = getAuth(window.firebaseApp);
+            console.log("Firebase app, db, auth geïnitialiseerd."); // Debug log
 
             // Listen for authentication state changes
             onAuthStateChanged(window.auth, async (user) => {
+                console.log("onAuthStateChanged callback geactiveerd."); // Debug log
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
                 } else {
-                    // Meld anoniem aan als er geen gebruiker is ingelogd
+                    console.log("Geen gebruiker gevonden, probeer anoniem aan te melden."); // Debug log
                     try {
                         const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                         if (__initial_auth_token) {
@@ -117,11 +121,13 @@
                     }
                 }
                 window.isAuthReady = true;
+                console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`); // Debug log
                 // Zodra authenticatie klaar is, laad transacties
                 if (window.userId) {
                     loadTransactions();
                 } else {
-                    console.warn("Gebruikers-ID niet beschikbaar na authenticatiestatuswijziging.");
+                    console.warn("Gebruikers-ID niet beschikbaar na authenticatiestatuswijziging. Kan transacties niet laden.");
+                    showLoadingIndicator(false); // Verberg de indicator als userId niet beschikbaar is
                 }
             });
         };
@@ -158,12 +164,14 @@
                 indicator.style.display = show ? 'flex' : 'none';
             }
             window.isLoading = show;
+            console.log(`Laadindicator: ${show ? 'getoond' : 'verborgen'}`); // Debug log
         }
 
         /**
          * Laadt transacties van Firestore en luistert naar real-time updates.
          */
         window.loadTransactions = function() {
+            console.log("loadTransactions gestart."); // Debug log
             showLoadingIndicator(true); // Toon laadindicator
             if (!window.db) {
                 console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
@@ -173,8 +181,11 @@
 
             // Gebruik het gedeelde pad voor de collectie
             const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
+            console.log(`Firestore collectie pad: artifacts/${window.__app_id}/public/data/transactions`); // Debug log
+
             // Gebruik onSnapshot om real-time updates te krijgen
             window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
+                console.log("onSnapshot succes callback geactiveerd."); // Debug log
                 window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 console.log("Transacties geladen/bijgewerkt:", window.transactions);
                 updateQuarterOptions();
@@ -183,7 +194,7 @@
                 generateReports(); // Generate reports after data is loaded
                 showLoadingIndicator(false); // Verberg laadindicator na succesvol laden
             }, (error) => {
-                console.error("Fout bij laden transacties:", error);
+                console.error("Fout bij laden transacties (onSnapshot error callback):", error); // Debug log
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
 
@@ -364,6 +375,7 @@
          * Genereert en toont verschillende rapporten.
          */
         function generateReports() {
+            console.log("generateReports gestart."); // Debug log
             const currentQuarterSelect = document.getElementById('summaryQuarterSelect');
             const selectedQuarter = currentQuarterSelect.value;
 
@@ -459,28 +471,45 @@
             const monthlyTrendList = Object.entries(monthlyTrends).map(([monthKey, data]) => {
                 const [year, month] = monthKey.split('-');
                 const monthName = new Date(year, parseInt(month) - 1, 1).toLocaleString('nl-NL', { month: 'long' });
-                const profit = data.income - data.expenses - (data.income * VAT_RATE) +
-                                expenseTransactions.filter(e => {
+                // Recalculate profit for the trend, considering VAT
+                const monthlyIncomeAmount = data.income;
+                const monthlyExpensesAmount = data.expenses;
+                const monthlyVatOnIncome = monthlyIncomeAmount * VAT_RATE;
+                const monthlyRecoverableVat = expenseTransactions.filter(e => {
                                     const eDate = new Date(e.timestamp);
                                     return eDate.getFullYear() == year && (eDate.getMonth() + 1).toString().padStart(2, '0') == month && RECOVERABLE_VAT_EXPENSE_CATEGORIES.includes(e.subcategory);
                                 }).reduce((sum, e) => sum + (e.amount * VAT_RATE), 0);
+                const monthlyProfit = monthlyIncomeAmount - monthlyExpensesAmount - monthlyVatOnIncome + monthlyRecoverableVat;
+
                 return {
                     key: `${monthName} ${year}`,
-                    value: `Ink: €${data.income.toFixed(2)}, Uit: €${data.expenses.toFixed(2)}, Winst: €${profit.toFixed(2)}`
+                    value: `Ink: €${monthlyIncomeAmount.toFixed(2)}, Uit: €${monthlyExpensesAmount.toFixed(2)}, Winst: €${monthlyProfit.toFixed(2)}`
                 };
             }).sort((a, b) => {
                 // Sort by monthKey (YYYY-MM) to ensure chronological order
-                const monthKeyA = a.key.split(' ')[1] + '-' + (new Date(Date.parse(a.key.split(' ')[0] + ' 1, 2000')).getMonth() + 1).toString().padStart(2, '0');
-                const monthKeyB = b.key.split(' ')[1] + '-' + (new Date(Date.parse(b.key.split(' ')[0] + ' 1, 2000')).getMonth() + 1).toString().padStart(2, '0');
-                return monthKeyA.localeCompare(monthKeyB);
+                const monthYearA = a.key.split(' ')[1] + '-' + (new Date(Date.parse(a.key.split(' ')[0] + ' 1, 2000')).getMonth() + 1).toString().padStart(2, '0');
+                const monthYearB = b.key.split(' ')[1] + '-' + (new Date(Date.parse(b.key.split(' ')[0] + ' 1, 2000')).getMonth() + 1).toString().padStart(2, '0');
+                return monthYearA.localeCompare(monthYearB);
             });
 
             renderCustomReport('monthlyTrends', 'Maandelijkse Trends', monthlyTrendList);
 
 
             // 4. BTW-overzicht (Gedetailleerder)
-            let vatOnIncome = totalIncome * VAT_RATE; // Gebruik totalIncome van displaySummary
-            let recoverableVat = totalRecoverableVATOnExpenses; // Gebruik totalRecoverableVATOnExpenses van displaySummary
+            // Deze waarden komen al van displaySummary, dus we hoeven ze alleen te presenteren.
+            // We halen ze hier opnieuw op om zeker te zijn dat ze de gefilterde transacties reflecteren.
+            let totalIncomeForVAT = 0;
+            let totalExpensesForRecoverableVAT = 0;
+            filteredTransactions.forEach(t => {
+                if (t.type === 'income') {
+                    totalIncomeForVAT += t.amount;
+                } else if (t.type === 'expense' && RECOVERABLE_VAT_EXPENSE_CATEGORIES.includes(t.subcategory)) {
+                    totalExpensesForRecoverableVAT += t.amount;
+                }
+            });
+
+            let vatOnIncome = totalIncomeForVAT * VAT_RATE;
+            let recoverableVat = totalExpensesForRecoverableVAT * VAT_RATE;
             let netVat = vatOnIncome - recoverableVat;
 
             const vatReportData = [
@@ -495,8 +524,6 @@
             filteredTransactions.forEach(t => {
                 const personName = t.person || 'Onbekend';
                 transactionsByPerson[personName] = (transactionsByPerson[personName] || 0) + 1; // Count transactions
-                // Of als je de totale waarde per medewerker wilt:
-                // transactionsByPerson[personName] = (transactionsByPerson[personName] || 0) + t.amount;
             });
             renderReport('transactionsByPerson', 'Transacties per Medewerker (aantal)', transactionsByPerson, 'count', true);
         }
@@ -592,6 +619,7 @@
 
         // Initialiseer de app bij het laden van de pagina
         window.onload = function() {
+            console.log("Window onload geactiveerd."); // Debug log
             window.initFirebase(); // Initialiseer Firebase
             window.initAudio(); // Initialiseer audio context
             // De dropdown voor kwartaaloverzicht wordt geladen via loadTransactions -> updateQuarterOptions
