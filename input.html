@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financiële Tracker - Invoer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase instances
+        window.firebaseApp = null;
+        window.db = null;
+        window.auth = null;
+        window.userId = null;
+        window.isAuthReady = false;
+        window.transactions = []; // Store transactions globally for consistency and editing purposes
+
+        // Make Firestore functions globally available
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.onSnapshot = onSnapshot;
+        window.doc = doc;
+        window.updateDoc = updateDoc;
+        window.deleteDoc = deleteDoc;
+        window.query = query;
+        window.orderBy = orderBy;
+
+
+        // Initialize Firebase and set up authentication
+        window.initFirebase = async () => {
+            // Updated app ID for this version to ensure data separation
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
+            window.__app_id = appId; // Make it globally accessible for Firestore paths
+
+            let firebaseConfig = {};
+
+            // De Firebase configuratie is nu direct hieronder geplakt.
+            // Deze is afkomstig van jouw Firebase project: schkas-66d27
+            firebaseConfig = {
+              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+              authDomain: "schkas-66d27.firebaseapp.com",
+              projectId: "schkas-66d27",
+              storageBucket: "schkas-66d27.firebasestorage.app",
+              messagingSenderId: "987453212703",
+              appId: "1:987453212703:web:dcee394027367b74df2d2a"
+            };
+            // measurementId is niet nodig voor de functionaliteit van deze app en is verwijderd.
+
+            if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken. Werk firebaseConfig bij met je echte Firebase projectgegevens.");
+                // We gaan door met initialisatie om de app niet volledig te breken,
+                // maar Firestore-bewerkingen zullen mislukken.
+            }
+
+            window.firebaseApp = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.firebaseApp);
+            window.auth = getAuth(window.firebaseApp);
+
+            // Listen for authentication state changes
+            onAuthStateChanged(window.auth, async (user) => {
+                if (user) {
+                    window.userId = user.uid;
+                    console.log("Gebruiker geauthenticeerd:", window.userId);
+                } else {
+                    // Meld anoniem aan als er geen gebruiker is ingelogd
+                    try {
+                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        if (__initial_auth_token) {
+                            await signInWithCustomToken(window.auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(window.auth);
+                        }
+                        window.userId = window.auth.currentUser.uid;
+                        console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
+                    } catch (error) {
+                        console.error("Fout tijdens anonieme aanmelding:", error);
+                    }
+                }
+                window.isAuthReady = true;
+                // Zodra authenticatie klaar is, laad transacties
+                if (window.userId) {
+                    loadTransactions(); // Still load to populate window.transactions for consistency
+                } else {
+                    console.warn("Gebruikers-ID niet beschikbaar na authenticatiestatuswijziging.");
+                }
+            });
+        };
+
+        // BTW-percentage (aanpasbaar)
+        const VAT_RATE = 0.21; // 21%
+
+        // Categorieën waarop BTW teruggevorderd kan worden voor uitgaven
+        const RECOVERABLE_VAT_EXPENSE_CATEGORIES = [
+            "Producten",
+            "Nutsvoorziening",
+            "Boekhouder",
+            "Verzekeringen",
+            "Marketing",
+            "Software",
+            "Verbruiksartikelen"
+        ];
+
+        // Definieer subcategorieën
+        const subcategoriesData = {
+            treatments: ["Suikerontharing", "Laserontharing", "Nagels", "Manicure", "Pedicure", "Gelaatsverzorging", "Massage", "Wimpers/brows", "Spraytan", "Make up", "LPG", "Andere"],
+            sales: ["Biologique Recherche", "I AM KLEAN", "LPG", "Atelier Rebul", "Lash Extend", "Lamination", "Pandhys", "OPI", "Abonnementen", "Cadeaubon", "Footlogix", "Andere"],
+            expenses: ["Lonen", "Derden", "Huur", "Producten", "Nutsvoorziening", "Boekhouder", "Verzekeringen", "Marketing", "Andere", "Software", "Leasing", "Afbetaling", "Loonkost", "Verbruiksartikelen"]
+        };
+
+        // Definieer personen (voor Ingevoerd door)
+        const persons = ["Marlien", "Kimberly", "Yasmine", "Jade"];
+
+        // Definieer transactietypes en inkomstencategorieën
+        const transactionTypes = [
+            { value: 'income', text: 'Inkomst' },
+            { value: 'expense', text: 'Uitgave' }
+        ];
+
+        const incomeCategories = [
+            { value: 'treatments', text: 'Behandelingen' },
+            { value: 'sales', text: 'Verkoop' }
+        ];
+
+        // Definieer betalingsopties
+        const paymentOptions = ["Cash", "Payconiq/BC", "Cadeaubon", "Abonnement"];
+
+        /**
+         * Genereert en vult de kwartaalopties in het dropdownmenu.
+         * @param {HTMLElement} selectElement - Het select element om te vullen.
+         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         */
+        window.generateQuarterOptions = function(selectElement, defaultValue = null) {
+            const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth();
+            const currentQuarter = Math.floor(currentMonth / 3) + 1; // 1-4
+
+            let optionsHtml = '';
+            // Genereer voor vorig jaar, huidig jaar en volgend jaar
+            for (let year = currentYear - 1; year <= currentYear + 1; year++) {
+                for (let q = 1; q <= 4; q++) {
+                    const quarterString = `${year} Q${q}`;
+                    optionsHtml += `<option value="${quarterString}">${quarterString}</option>`;
+                }
+            }
+            selectElement.innerHTML = optionsHtml;
+
+            // Stel standaard in op het huidige kwartaal of de opgegeven waarde
+            const defaultQuarterString = defaultValue || `${currentYear} Q${currentQuarter}`;
+            if (selectElement.querySelector(`option[value="${defaultQuarterString}"]`)) {
+                selectElement.value = defaultQuarterString;
+            }
+        }
+
+        /**
+         * Vult de dropdown met transactietypes.
+         * @param {HTMLElement} selectElement - Het select element om te vullen.
+         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         */
+        window.populateTransactionTypes = function(selectElement, defaultValue = null) {
+            let optionsHtml = '';
+            transactionTypes.forEach(type => {
+                optionsHtml += `<option value="${type.value}">${type.text}</option>`;
+            });
+            selectElement.innerHTML = optionsHtml;
+            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
+                selectElement.value = defaultValue;
+            }
+        }
+
+        /**
+         * Vult de dropdown met inkomstencategorieën.
+         * @param {HTMLElement} selectElement - Het select element om te vullen.
+         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         */
+        window.populateIncomeCategories = function(selectElement, defaultValue = null) {
+            let optionsHtml = '';
+            incomeCategories.forEach(category => {
+                optionsHtml += `<option value="${category.value}">${category.text}</option>`;
+            });
+            selectElement.innerHTML = optionsHtml;
+            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
+                selectElement.value = defaultValue;
+            }
+        }
+
+        /**
+         * Vult de dropdown met personen.
+         * @param {HTMLElement} selectElement - Het select element om te vullen.
+         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         */
+        window.populatePersons = function(selectElement, defaultValue = null) {
+            let optionsHtml = '';
+            persons.forEach(person => {
+                optionsHtml += `<option value="${person}">${person}</option>`;
+            });
+            selectElement.innerHTML = optionsHtml;
+            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
+                selectElement.value = defaultValue;
+            }
+        }
+
+        /**
+         * Vult de dropdown met betalingsopties.
+         * @param {HTMLElement} selectElement - Het select element om te vullen.
+         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         */
+        window.populatePaymentOptions = function(selectElement, defaultValue = null) {
+            let optionsHtml = '';
+            paymentOptions.forEach(option => {
+                optionsHtml += `<option value="${option}">${option}</option>`;
+            });
+            selectElement.innerHTML = optionsHtml;
+            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
+                selectElement.value = defaultValue;
+            }
+        }
+
+        /**
+         * Schakelt de zichtbaarheid van de inkomstencategorie-selectie en specifieke velden in of uit,
+         * en vult de subcategorieën op basis van de geselecteerde typen.
+         * @param {HTMLElement} [containerElement] - De container van de invoervelden (voor bulk invoer).
+         */
+        window.toggleCategory = function(containerElement = document) {
+            const typeSelect = containerElement.querySelector('[id^="typeSelect"]');
+            const incomeCategoryGroup = containerElement.querySelector('[id^="incomeCategoryGroup"]');
+            const subcategoryGroup = containerElement.querySelector('[id^="subcategoryGroup"]');
+            const subcategorySelect = containerElement.querySelector('[id^="subcategorySelect"]');
+            const customerNameGroup = containerElement.querySelector('[id^="customerNameGroup"]');
+            const productNameGroup = containerElement.querySelector('[id^="productNameGroup"]');
+            const invoiceDateGroup = containerElement.querySelector('[id^="invoiceDateGroup"]');
+            const remarksGroup = containerElement.querySelector('[id^="remarksGroup"]');
+            const incomeCategorySelect = containerElement.querySelector('[id^="incomeCategorySelect"]');
+
+
+            // Reset alle specifieke velden naar verborgen
+            if (customerNameGroup) customerNameGroup.style.display = 'none';
+            if (productNameGroup) productNameGroup.style.display = 'none';
+            if (invoiceDateGroup) invoiceDateGroup.style.display = 'none';
+            if (remarksGroup) remarksGroup.style.display = 'none';
+            if (subcategorySelect) subcategorySelect.innerHTML = ''; // Wis bestaande subcategorie opties
+
+            if (typeSelect && typeSelect.value === 'income') {
+                if (incomeCategoryGroup) incomeCategoryGroup.style.display = 'block';
+
+                const incomeCategory = incomeCategorySelect ? incomeCategorySelect.value : null;
+                if (incomeCategory === 'treatments') {
+                    if (customerNameGroup) customerNameGroup.style.display = 'block';
+                    if (subcategorySelect) populateSubcategories(subcategorySelect, 'treatments');
+                } else if (incomeCategory === 'sales') {
+                    if (productNameGroup) productNameGroup.style.display = 'block';
+                    if (subcategorySelect) populateSubcategories(subcategorySelect, 'sales');
+                }
+            } else { // typeSelect.value === 'expense'
+                if (incomeCategoryGroup) incomeCategoryGroup.style.display = 'none';
+                if (invoiceDateGroup) invoiceDateGroup.style.display = 'block';
+                if (remarksGroup) remarksGroup.style.display = 'block';
+                if (subcategorySelect) populateSubcategories(subcategorySelect, 'expenses');
+            }
+            if (subcategoryGroup) subcategoryGroup.style.display = 'block'; // Toon altijd subcategorie
+        }
+
+        /**
+         * Vult de subcategorie dropdown op basis van de geselecteerde hoofdcategorie.
+         * @param {HTMLElement} selectElement - Het select element om te vullen.
+         * @param {string} categoryKey - De sleutel van de categorie (bijv. 'treatments', 'sales', 'expenses').
+         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         */
+        function populateSubcategories(selectElement, categoryKey, defaultValue = null) {
+            const options = subcategoriesData[categoryKey] || [];
+            let optionsHtml = '';
+            options.forEach(sub => {
+                optionsHtml += `<option value="${sub}">${sub}</option>`;
+            });
+            selectElement.innerHTML = optionsHtml;
+            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
+                selectElement.value = defaultValue;
+            }
+        }
+
+        /**
+         * Werkt de achtergrondkleur van de type select dropdown bij.
+         * @param {HTMLElement} [selectElement] - Het select element om de kleur van aan te passen.
+         */
+        window.updateTypeColor = function(selectElement) {
+            if (!selectElement) return;
+            selectElement.classList.remove('bg-income', 'bg-expense');
+            if (selectElement.value === 'income') {
+                selectElement.classList.add('bg-income');
+            } else {
+                selectElement.classList.add('bg-expense');
+            }
+        }
+
+        /**
+         * Werkt de achtergrondkleur van de inkomstencategorie select dropdown bij.
+         * @param {HTMLElement} [selectElement] - Het select element om de kleur van aan te passen.
+         */
+        window.updateIncomeCategoryColor = function(selectElement) {
+            if (!selectElement) return;
+            selectElement.classList.remove('bg-treatments', 'bg-sales');
+            if (selectElement.value === 'treatments') {
+                selectElement.classList.add('bg-treatments');
+            } else if (selectElement.value === 'sales') {
+                selectElement.classList.add('bg-sales');
+            }
+        }
+
+        /**
+         * Navigeert terug naar de landingspagina.
+         */
+        function navigateToHome() {
+            window.location.href = 'index.html';
+        }
+
+        /**
+         * Voegt een nieuwe rij toe voor bulktransactie-invoer.
+         * @param {object} [transaction] - Optioneel transactieobject om de rij mee te vullen (voor bewerken).
+         */
+        window.addBulkTransactionRow = function(transaction = null) {
+            const container = document.getElementById('bulkTransactionContainer');
+            const newRow = document.createElement('div');
+            newRow.className = 'bulk-transaction-row';
+            // Use transaction ID if editing, otherwise generate a temporary unique ID for new rows
+            const rowId = transaction ? transaction.id : `bulkRow_${Date.now()}`;
+
+            newRow.innerHTML = `
+                <button class="remove-row-btn" onclick="removeBulkTransactionRow(this)">X</button>
+                <div class="input-group">
+                    <label for="quarterSelect_${rowId}">Kwartaal:</label>
+                    <select id="quarterSelect_${rowId}"></select>
+                </div>
+                <div class="input-group">
+                    <label for="typeSelect_${rowId}">Type Transactie:</label>
+                    <select id="typeSelect_${rowId}" onchange="toggleCategory(this.closest('.bulk-transaction-row')); updateTypeColor(this)"></select>
+                </div>
+                <div class="input-group" id="incomeCategoryGroup_${rowId}">
+                    <label for="incomeCategorySelect_${rowId}">Inkomst Categorie:</label>
+                    <select id="incomeCategorySelect_${rowId}" onchange="toggleCategory(this.closest('.bulk-transaction-row')); updateIncomeCategoryColor(this)"></select>
+                </div>
+                <div class="input-group" id="subcategoryGroup_${rowId}">
+                    <label for="subcategorySelect_${rowId}">Subcategorie:</label>
+                    <select id="subcategorySelect_${rowId}"></select>
+                </div>
+                <div class="input-group" id="customerNameGroup_${rowId}" style="display:none;">
+                    <label for="customerNameInput_${rowId}">Klantnaam:</label>
+                    <input type="text" id="customerNameInput_${rowId}" placeholder="Naam van de klant">
+                </div>
+                <div class="input-group" id="productNameGroup_${rowId}" style="display:none;">
+                    <label for="productNameInput_${rowId}">Productnaam:</label>
+                    <input type="text" id="productNameInput_${rowId}" placeholder="Naam van het product">
+                </div>
+                <div class="input-group">
+                    <label for="paymentMethodSelect_${rowId}">Betaling:</label>
+                    <select id="paymentMethodSelect_${rowId}"></select>
+                </div>
+                <div class="input-group">
+                    <label for="amountInput_${rowId}">Bedrag (€):</label>
+                    <input type="number" id="amountInput_${rowId}" placeholder="0.00" step="0.01">
+                    <p id="amountError_${rowId}" class="error-message">Voer een geldig bedrag in.</p>
+                </div>
+                <div class="input-group" id="invoiceDateGroup_${rowId}" style="display:none;">
+                    <label for="invoiceDateInput_${rowId}">Factuurdatum:</label>
+                    <input type="date" id="invoiceDateInput_${rowId}">
+                </div>
+                <div class="input-group" id="remarksGroup_${rowId}" style="display:none;">
+                    <label for="remarksInput_${rowId}">Opmerkingen:</label>
+                    <textarea id="remarksInput_${rowId}" placeholder="Eventuele opmerkingen"></textarea>
+                </div>
+                <div class="input-group">
+                    <label for="personInput_${rowId}">Ingevoerd door:</label>
+                    <select id="personInput_${rowId}"></select>
+                </div>
+                <input type="hidden" id="transactionIdToEdit_${rowId}" value="${transaction ? transaction.id : ''}">
+            `;
+            container.appendChild(newRow);
+
+            // Get references to the elements in the new row
+            const quarterSelect = newRow.querySelector(`[id^="quarterSelect_"]`);
+            const typeSelect = newRow.querySelector(`[id^="typeSelect_"]`);
+            const incomeCategorySelect = newRow.querySelector(`[id^="incomeCategorySelect_"]`);
+            const subcategorySelect = newRow.querySelector(`[id^="subcategorySelect_"]`);
+            const paymentMethodSelect = newRow.querySelector(`[id^="paymentMethodSelect_"]`);
+            const amountInput = newRow.querySelector(`[id^="amountInput_"]`);
+            const personInput = newRow.querySelector(`[id^="personInput_"]`);
+            const customerNameInput = newRow.querySelector(`[id^="customerNameInput_"]`);
+            const productNameInput = newRow.querySelector(`[id^="productNameInput_"]`);
+            const invoiceDateInput = newRow.querySelector(`[id^="invoiceDateInput_"]`);
+            const remarksInput = newRow.querySelector(`[id^="remarksInput_"]`);
+
+            // Populate dropdowns for the new row
+            window.generateQuarterOptions(quarterSelect, transaction ? transaction.quarter : null);
+            window.populateTransactionTypes(typeSelect, transaction ? transaction.type : null);
+            window.populateIncomeCategories(incomeCategorySelect, transaction ? transaction.category : null);
+            window.populatePersons(personInput, transaction ? transaction.person : null);
+            window.populatePaymentOptions(paymentMethodSelect, transaction ? transaction.paymentMethod : null);
+
+            // Set other fields and toggle visibility based on transaction data
+            if (transaction) {
+                amountInput.value = transaction.amount;
+                if (transaction.type === 'income') {
+                    if (transaction.category === 'treatments') {
+                        customerNameInput.value = transaction.customerName || '';
+                    } else if (transaction.category === 'sales') {
+                        productNameInput.value = transaction.productName || '';
+                    }
+                } else { // expense
+                    invoiceDateInput.value = transaction.invoiceDate || '';
+                    remarksInput.value = transaction.remarks || '';
+                }
+            }
+
+            window.toggleCategory(newRow); // Initialize visibility and subcategories for the new row
+            if (transaction) {
+                // After toggleCategory, populate subcategory with specific value
+                populateSubcategories(subcategorySelect, transaction.type === 'income' ? transaction.category : 'expenses', transaction.subcategory);
+            }
+            window.updateTypeColor(typeSelect);
+            window.updateIncomeCategoryColor(incomeCategorySelect);
+        }
+
+        /**
+         * Verwijdert een bulktransactie-rij.
+         * @param {HTMLElement} button - De verwijderknop die is geklikt.
+         */
+        window.removeBulkTransactionRow = function(button) {
+            button.closest('.bulk-transaction-row').remove();
+        }
+
+        /**
+         * Handelt het toevoegen van meerdere transacties vanuit de bulk-invoer.
+         */
+        window.handleBulkTransactions = async function() {
+            const bulkRows = document.querySelectorAll('.bulk-transaction-row');
+            const transactionsToSave = [];
+            let hasErrors = false;
+
+            if (!window.db || !window.userId) {
+                console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd.");
+                return;
+            }
+
+            for (const row of bulkRows) {
+                const rowIdElement = row.querySelector('[id^="transactionIdToEdit_"]');
+                const rowId = rowIdElement ? rowIdElement.value : null; // Get the ID, if it exists
+
+                const quarter = row.querySelector('[id^="quarterSelect_"]').value;
+                const type = row.querySelector('[id^="typeSelect_"]').value;
+                const incomeCategorySelect = row.querySelector('[id^="incomeCategorySelect_"]');
+                const subcategory = row.querySelector('[id^="subcategorySelect_"]').value;
+                const paymentMethod = row.querySelector('[id^="paymentMethodSelect_"]').value;
+                const amountInput = row.querySelector('[id^="amountInput_"]');
+                const person = row.querySelector('[id^="personInput_"]').value;
+                const customerNameInput = row.querySelector('[id^="customerNameInput_"]');
+                const productNameInput = row.querySelector('[id^="productNameInput_"]');
+                const invoiceDateInput = row.querySelector('[id^="invoiceDateInput_"]');
+                const remarksInput = row.querySelector('[id^="remarksInput_"]');
+                const amountError = row.querySelector('[id^="amountError_"]');
+
+                const amount = parseFloat(amountInput.value);
+
+                if (isNaN(amount) || amount <= 0) {
+                    amountError.style.display = 'block';
+                    hasErrors = true;
+                    continue; // Skip to next row if amount is invalid
+                } else {
+                    amountError.style.display = 'none';
+                }
+
+                let transactionData = {
+                    quarter: quarter,
+                    type: type,
+                    paymentMethod: paymentMethod,
+                    amount: amount,
+                    timestamp: new Date().toISOString(), // Automatisch gegenereerde datum
+                    person: person,
+                    subcategory: subcategory
+                };
+
+                if (type === 'income') {
+                    transactionData.category = incomeCategorySelect.value;
+                    if (incomeCategorySelect.value === 'treatments') {
+                        transactionData.customerName = customerNameInput.value.trim();
+                    } else if (incomeCategorySelect.value === 'sales') {
+                        transactionData.productName = productNameInput.value.trim();
+                    }
+                } else { // expense
+                    transactionData.category = 'N.v.t.';
+                    transactionData.invoiceDate = invoiceDateInput.value;
+                    transactionData.remarks = remarksInput.value.trim();
+                }
+                transactionsToSave.push({ id: rowId, data: transactionData });
+            }
+
+            if (hasErrors) {
+                console.error("Sommige bulktransacties bevatten fouten. Controleer de gemarkeerde velden.");
+                return;
+            }
+            if (transactionsToSave.length === 0) {
+                console.warn("Geen transacties om toe te voegen.");
+                return;
+            }
+
+            try {
+                const transactionsCollection = window.collection(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`);
+                const promises = transactionsToSave.map(item => {
+                    // If item.id exists and is not a temporary 'bulkRow_' ID, it's an existing transaction being edited
+                    if (item.id && !item.id.startsWith('bulkRow_')) {
+                        const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`, item.id);
+                        return window.updateDoc(transactionRef, item.data);
+                    } else { // It's a new transaction (or a temporary ID from a newly added row)
+                        return window.addDoc(transactionsCollection, item.data);
+                    }
+                });
+                await Promise.all(promises);
+                console.log(`${transactionsToSave.length} transacties succesvol toegevoegd/bijgewerkt.`);
+
+                // Clear all bulk input rows after successful submission and add one new empty row
+                document.getElementById('bulkTransactionContainer').innerHTML = '';
+                window.addBulkTransactionRow(); // Add an empty row for new input
+
+            } catch (e) {
+                console.error("Fout bij het toevoegen/bijwerken van bulktransacties:", e);
+            }
+        }
+
+
+        /**
+         * Laadt transacties van Firestore en luistert naar real-time updates.
+         * Op deze pagina wordt alleen de data geladen, niet weergegeven.
+         */
+        window.loadTransactions = function() {
+            if (!window.db || !window.userId) {
+                console.error("Firestore is niet geïnitialiseerd of gebruiker is niet geauthenticeerd. Kan transacties niet laden.");
+                return;
+            }
+
+            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/users/${window.userId}/transactions`);
+            // Gebruik onSnapshot om real-time updates te krijgen
+            window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
+                window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Transacties geladen/bijgewerkt:", window.transactions);
+
+                // Check for editId in URL after transactions are loaded
+                const urlParams = new URLSearchParams(window.location.search);
+                const editId = urlParams.get('editId');
+
+                if (editId && window.transactions.length > 0) {
+                    const transactionToEdit = window.transactions.find(t => t.id === editId);
+                    if (transactionToEdit) {
+                        document.getElementById('bulkTransactionContainer').innerHTML = ''; // Clear existing rows
+                        window.addBulkTransactionRow(transactionToEdit);
+                        // Remove editId from URL to prevent re-loading on refresh
+                        history.replaceState({}, document.title, window.location.pathname);
+                    } else {
+                        console.warn(`Transactie met ID ${editId} niet gevonden.`);
+                        window.addBulkTransactionRow(); // Add a default empty row if not found
+                    }
+                } else if (document.querySelectorAll('.bulk-transaction-row').length === 0) {
+                    // Only add a default row if no rows are present and no editId was found
+                    window.addBulkTransactionRow();
+                }
+
+            }, (error) => {
+                console.error("Fout bij laden transacties:", error);
+            });
+
+            document.getElementById('currentUserId').textContent = window.userId;
+        }
+
+
+        // Initialiseer de app bij het laden van de pagina
+        window.onload = function() {
+            window.initFirebase(); // Initialiseer Firebase
+            // addBulkTransactionRow() is nu verplaatst naar loadTransactions om te zorgen dat
+            // transacties eerst geladen zijn voordat we proberen te bewerken.
+        };
+    </script>
+    <style>
+        /* Tailwind CSS wordt gebruikt voor styling */
+        body {
+            font-family: 'Calibri', sans-serif; /* Changed font to Calibri */
+            background-color: #e0f2f7; /* Soft pastel blue */
+            color: #4a5568; /* Darker grey for better readability */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Lijn bovenaan uit */
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff; /* White for the main container */
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            max-width: 900px; /* Bredere container */
+            width: 100%;
+            text-align: left;
+        }
+        h1, h2 {
+            color: #2c5282; /* Darker blue for headings */
+            margin-bottom: 20px;
+            font-size: 2.2rem;
+            text-align: center;
+        }
+        h2 {
+            font-size: 1.8rem;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #4a5568;
+        }
+        input[type="text"], input[type="number"], input[type="date"], select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #a0aec0; /* Softer border color */
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+            transition: background-color 0.2s ease; /* Add transition for color changes */
+        }
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        button {
+            background-color: #63b3ed; /* Soft blue for buttons */
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #4299e1; /* Slightly darker blue on hover */
+            transform: translateY(-2px);
+        }
+        .summary-section, .transaction-list-section {
+            margin-top: 40px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 30px;
+        }
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dashed #cbd5e0; /* Softer dashed border */
+        }
+        .summary-item:last-child {
+            border-bottom: none;
+        }
+        .summary-item strong {
+            color: #2d3748;
+        }
+        .total-vat {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #e53e3e; /* Red for VAT */
+            margin-top: 15px;
+            text-align: right;
+        }
+        .total-profit {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #48bb78; /* Green for profit */
+            margin-top: 20px;
+            text-align: right;
+        }
+        .error-message {
+            color: #e53e3e;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            display: none; /* Standaard verborgen */
+        }
+        .transaction-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            table-layout: fixed; /* Added to fix column widths */
+        }
+        .transaction-table th, .transaction-table td {
+            border: 1px solid #e2e8f0;
+            padding: 8px; /* Adjusted padding */
+            text-align: left;
+            vertical-align: top; /* Ensure content aligns at the top */
+            overflow: hidden; /* Added for text truncation */
+            text-overflow: ellipsis; /* Added for text truncation */
+            white-space: nowrap; /* Added for text truncation */
+        }
+        .transaction-table th {
+            background-color: #ebf8ff; /* Lighter blue for table headers */
+            font-weight: bold;
+            color: #4a5568;
+        }
+        .transaction-table tr:nth-child(even) {
+            background-color: #f7fafc; /* Very light blue for even rows */
+        }
+        .transaction-table button {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            margin-right: 5px;
+            border-radius: 6px;
+            box-shadow: none;
+        }
+        .transaction-table button.edit-btn {
+            background-color: #fbd38d; /* Soft orange for edit */
+        }
+        .transaction-table button.edit-btn:hover {
+            background-color: #f6ad55;
+        }
+        .transaction-table button.delete-btn {
+            background-color: #fc8181; /* Soft red for delete */
+        }
+        .transaction-table button.delete-btn:hover {
+            background-color: #e53e3e;
+        }
+        .user-id-display {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #718096;
+        }
+        /* Custom colors for categories (soft pastel versions) */
+        .bg-income { background-color: #d4edda; } /* Soft green */
+        .bg-expense { background-color: #f8d7da; } /* Soft red */
+        .bg-treatments { background-color: #cce5ff; } /* Soft blue */
+        .bg-sales { background-color: #e2d9f7; } /* Soft purple */
+
+        /* Specific column widths for better control */
+        .transaction-table th:nth-child(1), .transaction-table td:nth-child(1) { width: 10%; } /* Kwartaal */
+        .transaction-table th:nth-child(2), .transaction-table td:nth-child(2) { width: 8%; }  /* Type */
+        .transaction-table th:nth-child(3), .transaction-table td:nth-child(3) { width: 10%; } /* Categorie */
+        .transaction-table th:nth-child(4), .transaction-table td:nth-child(4) { width: 12%; } /* Subcategorie */
+        .transaction-table th:nth-child(5), .transaction-table td:nth-child(5) { width: 10%; } /* Betaling */
+        .transaction-table th:nth-child(6), .transaction-table td:nth-child(6) { width: 8%; }  /* Bedrag */
+        .transaction-table th:nth-child(7), .transaction-table td:nth-child(7) { width: 10%; } /* Klantnaam */
+        .transaction-table th:nth-child(8), .transaction-table td:nth-child(8) { width: 10%; } /* Productnaam */
+        .transaction-table th:nth-child(9), .transaction-table td:nth-child(9) { width: 10%; } /* Factuurdatum */
+        .transaction-table th:nth-child(10), .transaction-table td:nth-child(10) { width: 10%; } /* Opmerkingen */
+        .transaction-table th:nth-child(11), .transaction-table td:nth-child(11) { width: 10%; } /* Datum Ingave */
+        .transaction-table th:nth-child(12), .transaction-table td:nth-child(12) { width: 10%; } /* Ingevoerd Door */
+        .transaction-table th:nth-child(13), .transaction-table td:nth-child(13) { width: 15%; } /* Acties (buttons) */
+
+        /* Styling for Bulk Input Section */
+        .input-section { /* Renamed from .bulk-input-section */
+            margin-top: 40px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 30px;
+            background-color: #f0f8ff; /* Very light blue background */
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .bulk-transaction-row {
+            border: 1px solid #b3e0ff; /* Soft blue border */
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: #ffffff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            position: relative; /* For delete button positioning */
+        }
+
+        .bulk-transaction-row .input-group {
+            margin-bottom: 10px;
+        }
+
+        .bulk-transaction-row .remove-row-btn {
+            background-color: #ef4444; /* Red for remove button */
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            border-radius: 5px;
+            box-shadow: none;
+        }
+        .bulk-transaction-row .remove-row-btn:hover {
+            background-color: #dc2626;
+            transform: translateY(-1px);
+        }
+        .bulk-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Financiële Tracker - Invoer</h1>
+
+        <div class="user-id-display">
+            Je gebruikers-ID: <span id="currentUserId">Laden...</span>
+        </div>
+
+        <!-- Bulk Input Section (now the main input) -->
+        <div class="input-section">
+            <h2 class="text-xl font-semibold mb-4">Nieuwe Transacties Toevoegen (Bulk)</h2>
+            <div id="bulkTransactionContainer">
+                <!-- Dynamically added bulk transaction rows will go here -->
+            </div>
+            <div class="bulk-buttons">
+                <button onclick="addBulkTransactionRow()">Nieuwe Rij Toevoegen</button>
+                <button onclick="handleBulkTransactions()">Alle Transacties Toevoegen</button>
+            </div>
+        </div>
+
+        <div class="back-button-container">
+            <button onclick="navigateToHome()">Terug naar Start</button>
+        </div>
+    </div>
+</body>
+</html>
