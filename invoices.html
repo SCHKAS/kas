@@ -569,16 +569,16 @@
             }
 
             // Keep the original invoice number when updating
-            // Ensure invoiceNumberDisplay exists before trying to get its textContent
             const invoiceNumberDisplayElement = document.getElementById('invoiceNumberDisplay');
             if (invoiceNumberDisplayElement) {
                 invoiceData.invoiceNumber = invoiceNumberDisplayElement.textContent;
             } else {
-                // Fallback or error handling if element is not found, though it should be in renderInvoice
-                console.warn("invoiceNumberDisplay element not found when updating invoice.");
-                // You might want to retrieve it from the saved data if this is a real issue
+                console.warn("invoiceNumberDisplay element not found when updating invoice. Using previously loaded invoice number.");
+                // As a fallback, if the element isn't found (shouldn't happen if renderInvoice was called),
+                // you might need to retrieve the original invoice number from the stored `currentEditingInvoiceData`
+                // if you were storing the full data when `editInvoice` was called.
+                // For now, we assume it's there after `renderInvoice` is called.
             }
-
 
             if (isAuthReady && userId) {
                 try {
@@ -757,19 +757,38 @@
                 return;
             }
 
+            const invoicesList = document.getElementById('savedInvoicesList');
+            const loadingInvoicesElement = document.getElementById('loadingInvoices');
+            const noInvoicesElement = document.getElementById('noInvoices');
+
+            // Ensure loading message is visible initially
+            if (loadingInvoicesElement) {
+                loadingInvoicesElement.classList.remove('hidden');
+                loadingInvoicesElement.textContent = 'Facturen laden...';
+            }
+            if (noInvoicesElement) {
+                noInvoicesElement.classList.add('hidden'); // Hide "no invoices" initially
+            }
+
             const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
             const q = query(invoicesColRef, orderBy("invoiceDate", "desc")); // Order by date descending
 
             onSnapshot(q, (snapshot) => {
-                const invoicesList = document.getElementById('savedInvoicesList');
-                invoicesList.innerHTML = ''; // Clear existing list
-                document.getElementById('loadingInvoices').classList.add('hidden');
+                invoicesList.innerHTML = ''; // Clear existing list *after* getting references
+
+                if (loadingInvoicesElement) {
+                    loadingInvoicesElement.classList.add('hidden'); // Hide loading once data is received
+                }
 
                 if (snapshot.empty) {
-                    document.getElementById('noInvoices').classList.remove('hidden');
+                    if (noInvoicesElement) {
+                        noInvoicesElement.classList.remove('hidden');
+                    }
                     return;
                 } else {
-                    document.getElementById('noInvoices').classList.add('hidden');
+                    if (noInvoicesElement) {
+                        noInvoicesElement.classList.add('hidden');
+                    }
                 }
 
                 snapshot.forEach(doc => {
@@ -797,7 +816,13 @@
 
             }, (error) => {
                 console.error("Fout bij het laden van facturen: ", error);
-                document.getElementById('loadingInvoices').textContent = 'Fout bij het laden van facturen.';
+                if (loadingInvoicesElement) {
+                    loadingInvoicesElement.textContent = 'Fout bij het laden van facturen.';
+                    loadingInvoicesElement.classList.remove('hidden'); // Ensure error message is visible
+                }
+                if (noInvoicesElement) {
+                    noInvoicesElement.classList.add('hidden'); // Hide no invoices if there's an error
+                }
             });
         }
 
