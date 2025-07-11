@@ -198,6 +198,10 @@
                         persons: ['Marlien', 'Kimberly', 'Yasmine', 'Jade']
                     };
                 }
+                // Add the first transaction form after settings are loaded
+                if (document.querySelectorAll('.transaction-form-item').length === 0) {
+                    addTransactionForm();
+                }
             }, (error) => {
                 console.error("Fout bij het laden van app-instellingen:", error);
                 showMessageBox("Fout bij het laden van app-instellingen. Sommige dropdowns werken mogelijk niet correct.");
@@ -670,15 +674,16 @@
         }
 
         // Functie om af te melden
-        window.logoutUser = function() {
-            signOut(window.auth).then(() => {
-                console.log("Succesvol afgemeld.");
-                window.location.href = 'auth.html'; // Terug naar inlogpagina
-            }).catch((error) => {
-                console.error("Fout bij afmelden:", error);
-                showMessageBox("Fout bij afmelden. Probeer opnieuw.");
-            });
-        }
+        // Removed logoutUser function as the button is removed from this page.
+        // window.logoutUser = function() {
+        //     signOut(window.auth).then(() => {
+        //         console.log("Succesvol afgemeld.");
+        //         window.location.href = 'auth.html'; // Terug naar inlogpagina
+        //     }).catch((error) => {
+        //         console.error("Fout bij afmelden:", error);
+        //         showMessageBox("Fout bij afmelden. Probeer opnieuw.");
+        //     });
+        // }
 
         // Initialiseer de app bij het laden van de pagina
         window.onload = function() {
@@ -691,11 +696,10 @@
             document.getElementById('saveAllTransactionsBtn').addEventListener('click', window.saveAllTransactions);
             document.getElementById('clearFormBtn').addEventListener('click', window.clearForm); // Clear all dynamic forms
             document.getElementById('backToMainBtn').addEventListener('click', () => window.location.href = 'index.html');
-            document.getElementById('logoutBtn').addEventListener('click', window.logoutUser);
+            // Removed event listener for logout button
+            // document.getElementById('logoutBtn').addEventListener('click', window.logoutUser);
 
-            // Voeg standaard één leeg transactieformulier toe voor bulk input
-            // Dit wordt nu gedaan nadat appSettings mogelijk zijn geladen via onSnapshot
-            // addTransactionForm(); // Removed from here, will be called by loadAppSettings or on first appSettings load
+            // addTransactionForm() is now called within loadAppSettings to ensure settings are loaded first.
         };
     </script>
     <style>
@@ -852,12 +856,7 @@
         button#addTransactionFormBtn:hover, button#saveAllTransactionsBtn:hover {
             background-color: #6b46c1;
         }
-        button#logoutBtn {
-            background-color: #ef4444; /* Red for logout */
-        }
-        button#logoutBtn:hover {
-            background-color: #dc2626;
-        }
+        /* Removed logout button styling from here as the button is removed */
     </style>
 </head>
 <body>
@@ -884,7 +883,8 @@
 
         <div class="button-group mt-8">
             <button id="backToMainBtn">Terug naar Hoofdpagina</button>
-            <button id="logoutBtn">Afmelden</button>
+            <!-- Removed Logout Button from here -->
+            <!-- <button id="logoutBtn">Afmelden</button> -->
         </div>
     </div>
 </body>
