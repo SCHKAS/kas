@@ -105,6 +105,7 @@
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
                     window.isAuthReady = true;
+                    loadAppSettings(); // Load app settings from Firestore
                 } else {
                     console.log("Geen gebruiker gevonden, doorsturen naar auth.html."); // Debug log
                     window.location.href = 'auth.html'; // Redirect to login page
@@ -113,73 +114,112 @@
             });
         };
 
-        // BTW-percentage (aanpasbaar)
-        const VAT_RATE = 0.21; // 21%
+        // Global variable for app settings loaded from Firestore
+        window.appSettings = {};
 
-        // Categorieën voor inkomsten en uitgaven
-        const INCOME_CATEGORIES = {
-            'Behandelingen': [
-                'Suikerontharing', 'Laserontharing', 'Nagels', 'Manicure', 'Pedicure',
-                'Gelaatsverzorging', 'Massage', 'Wimpers/brows', 'Spraytan', 'Make up',
-                'LPG', 'Celestetic', 'Andere'
-            ],
-            'Verkoop': [
-                'Voorschotten', 'Biologique Recherche', 'I AM KLEAN', 'LPG',
-                'Atelier Rebul', 'Lash Extend', 'My Lamination', 'Pandhys', 'OPI',
-                'Abonnementen', 'Cadeaubon', 'Footlogix', 'Celestetic', 'Andere'
-            ]
+        /**
+         * Laadt de applicatie-instellingen van Firestore.
+         */
+        window.loadAppSettings = function() {
+            if (!window.db) {
+                console.error("Firestore is niet geïnitialiseerd. Kan app-instellingen niet laden.");
+                return;
+            }
+
+            const settingsDocRef = doc(window.db, `artifacts/${window.APP_ID}/public/data/settings`, 'appSettings');
+
+            onSnapshot(settingsDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    window.appSettings = docSnap.data();
+                    console.log("App-instellingen geladen:", window.appSettings);
+                    // Re-render all existing forms to update dropdowns
+                    document.querySelectorAll('.transaction-form-item').forEach(formElement => {
+                        const typeSelect = formElement.querySelector('.transaction-type-select');
+                        const categorySelect = formElement.querySelector('.transaction-category-select');
+                        const subcategorySelect = formElement.querySelector('.transaction-subcategory-select');
+                        const paymentMethodSelect = formElement.querySelector('.transaction-payment-method-select');
+                        const personSelect = formElement.querySelector('.transaction-person-select');
+
+                        // Save current selections before re-rendering options
+                        const currentType = typeSelect.value;
+                        const currentCategory = categorySelect.value;
+                        const currentSubcategory = subcategorySelect.value;
+                        const currentPaymentMethod = paymentMethodSelect ? paymentMethodSelect.value : '';
+                        const currentPerson = personSelect.value;
+
+                        populateDropdownsForForm(formElement); // Populate payment methods and persons
+
+                        // Restore selections if they are still valid options
+                        if (currentType) typeSelect.value = currentType;
+                        // Re-trigger category and subcategory updates to ensure correct options are shown
+                        window.updateCategoriesForForm(typeSelect, categorySelect);
+                        if (currentCategory) categorySelect.value = currentCategory;
+                        window.updateSubcategoriesForForm(
+                            typeSelect,
+                            categorySelect,
+                            subcategorySelect,
+                            formElement.querySelector(`.conditional-field[id^="paymentMethodGroup_"]`),
+                            formElement.querySelector(`.conditional-field[id^="customerNameGroup_"]`),
+                            formElement.querySelector(`.conditional-field[id^="productNameGroup_"]`),
+                            formElement.querySelector(`.conditional-field[id^="invoiceDateGroup_"]`)
+                        );
+                        if (currentSubcategory) subcategorySelect.value = currentSubcategory;
+                        if (paymentMethodSelect && currentPaymentMethod) paymentMethodSelect.value = currentPaymentMethod;
+                        if (currentPerson) personSelect.value = currentPerson;
+
+                        // Re-trigger conditional field visibility
+                        window.updateSubcategoriesForForm(
+                            typeSelect,
+                            categorySelect,
+                            subcategorySelect,
+                            formElement.querySelector(`.conditional-field[id^="paymentMethodGroup_"]`),
+                            formElement.querySelector(`.conditional-field[id^="customerNameGroup_"]`),
+                            formElement.querySelector(`.conditional-field[id^="productNameGroup_"]`),
+                            formElement.querySelector(`.conditional-field[id^="invoiceDateGroup_"]`)
+                        );
+                    });
+                } else {
+                    console.warn("App-instellingen document bestaat niet. Gebruik standaard hardcoded waarden (tijdelijk).");
+                    // Fallback to hardcoded defaults if settings document doesn't exist
+                    // This block should ideally not be hit if settings.html initializes the document.
+                    window.appSettings = {
+                        incomeCategories: {
+                            'Behandelingen': ['Suikerontharing', 'Laserontharing', 'Nagels', 'Manicure', 'Pedicure', 'Gelaatsverzorging', 'Massage', 'Wimpers/brows', 'Spraytan', 'Make up', 'LPG', 'Celestetic', 'Andere'],
+                            'Verkoop': ['Voorschotten', 'Biologique Recherche', 'I AM KLEAN', 'LPG', 'Atelier Rebul', 'Lash Extend', 'My Lamination', 'Pandhys', 'OPI', 'Abonnementen', 'Cadeaubon', 'Footlogix', 'Celestetic', 'Andere']
+                        },
+                        expenseCategories: {
+                            'Lonen': ['Lonen'], 'Derden': ['Derden'], 'Huur': ['Huur'], 'Producten': ['Producten'],
+                            'Nutsvoorziening': ['Nutsvoorziening'], 'Boekhouder': ['Boekhouder'], 'Verzekeringen': ['Verzekeringen'],
+                            'Marketing': ['Marketing'], 'Software': ['Software'], 'Leasing': ['Leasing'],
+                            'Afbetaling': ['Afbetaling'], 'Loonkost': ['Loonkost'], 'Sponsoring': ['Sponsoring'],
+                            'BTW': ['BTW'], 'Andere': ['Andere']
+                        },
+                        paymentMethods: ['Cash', 'Payconiq/BC', 'Cadeaubon', 'Abonnement'],
+                        persons: ['Marlien', 'Kimberly', 'Yasmine', 'Jade']
+                    };
+                }
+            }, (error) => {
+                console.error("Fout bij het laden van app-instellingen:", error);
+                showMessageBox("Fout bij het laden van app-instellingen. Sommige dropdowns werken mogelijk niet correct.");
+            });
         };
 
-        const EXPENSE_CATEGORIES = {
-            'Lonen': ['Lonen'],
-            'Derden': ['Derden'],
-            'Huur': ['Huur'],
-            'Producten': ['Producten'],
-            'Nutsvoorziening': ['Nutsvoorziening'],
-            'Boekhouder': ['Boekhouder'],
-            'Verzekeringen': ['Verzekeringen'],
-            'Marketing': ['Marketing'],
-            'Software': ['Software'],
-            'Leasing': ['Leasing'],
-            'Afbetaling': ['Afbetaling'],
-            'Loonkost': ['Loonkost'],
-            'Sponsoring': ['Sponsoring'],
-            'BTW': ['BTW'],
-            'Andere': ['Andere']
-        };
-
-        // Categorieën waarop BTW teruggevorderd kan worden voor uitgaven
-        const RECOVERABLE_VAT_EXPENSE_CATEGORIES = [
-            "Producten",
-            "Nutsvoorziening",
-            "Boekhouder",
-            "Verzekeringen",
-            "Marketing",
-            "Software",
-            "Verbruiksartikelen" // Assuming this is still relevant, though not explicitly in new list
-        ];
-
-        // Beperkte betalingsmethoden
-        const PAYMENT_METHODS = ['Cash', 'Payconiq/BC', 'Cadeaubon', 'Abonnement'];
-
-        // Opties voor 'Ingevoerd Door'
-        const PERSON_OPTIONS = ['Marlien', 'Kimberly', 'Yasmine', 'Jade'];
 
         // Functies voor het beheren van de UI
         /**
-         * Update de categorie-opties in een select-element.
-         * @param {HTMLSelectElement} typeSelect - Het 'type' select-element (inkomsten/uitgaven).
-         * @param {HTMLSelectElement} categorySelect - Het 'categorie' select-element.
+         * Populate the category dropdown for a specific form.
+         * @param {HTMLSelectElement} typeSelect - The 'type' select element.
+         * @param {HTMLSelectElement} categorySelect - The 'category' select element.
          */
         window.updateCategoriesForForm = function(typeSelect, categorySelect) {
             const type = typeSelect.value;
             categorySelect.innerHTML = '<option value="">Selecteer Categorie</option>';
 
             let categories = {};
-            if (type === 'income') {
-                categories = INCOME_CATEGORIES;
-            } else if (type === 'expense') {
-                categories = EXPENSE_CATEGORIES;
+            if (type === 'income' && window.appSettings.incomeCategories) {
+                categories = window.appSettings.incomeCategories;
+            } else if (type === 'expense' && window.appSettings.expenseCategories) {
+                categories = window.appSettings.expenseCategories;
             }
 
             for (const cat in categories) {
@@ -191,14 +231,14 @@
         }
 
         /**
-         * Update de subcategorie-opties in een select-element en beheert de zichtbaarheid van afhankelijke velden.
-         * @param {HTMLSelectElement} typeSelect - Het 'type' select-element.
-         * @param {HTMLSelectElement} categorySelect - Het 'categorie' select-element.
-         * @param {HTMLSelectElement} subcategorySelect - Het 'subcategorie' select-element.
-         * @param {HTMLElement} paymentMethodGroup - De groep voor betalingsmethode.
-         * @param {HTMLElement} customerNameGroup - De groep voor klantnaam.
-         * @param {HTMLElement} productNameGroup - De groep voor productnaam.
-         * @param {HTMLElement} invoiceDateGroup - De groep voor factuurdatum.
+         * Update the subcategory dropdown for a specific form and manage conditional field visibility.
+         * @param {HTMLSelectElement} typeSelect - The 'type' select element.
+         * @param {HTMLSelectElement} categorySelect - The 'category' select element.
+         * @param {HTMLSelectElement} subcategorySelect - The 'subcategory' select element.
+         * @param {HTMLElement} paymentMethodGroup - The payment method group element.
+         * @param {HTMLElement} customerNameGroup - The customer name group element.
+         * @param {HTMLElement} productNameGroup - The product name group element.
+         * @param {HTMLElement} invoiceDateGroup - The invoice date group element.
          */
         window.updateSubcategoriesForForm = function(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup) {
             const type = typeSelect.value;
@@ -213,8 +253,8 @@
             invoiceDateGroup.style.display = 'none';
 
             if (type === 'income') {
-                if (category && INCOME_CATEGORIES[category]) {
-                    INCOME_CATEGORIES[category].forEach(sub => {
+                if (category && window.appSettings.incomeCategories && window.appSettings.incomeCategories[category]) {
+                    window.appSettings.incomeCategories[category].forEach(sub => {
                         const option = document.createElement('option');
                         option.value = sub;
                         option.textContent = sub;
@@ -224,15 +264,15 @@
                 paymentMethodGroup.style.display = 'block';
                 customerNameGroup.style.display = 'block';
 
-                // Specifieke logica voor 'Productnaam' bij 'Behandelingen'
+                // Specific logic for 'Productnaam' with 'Behandelingen'
                 if (category === 'Behandelingen') {
-                    productNameGroup.style.display = 'none'; // Verberg productnaam bij behandelingen
+                    productNameGroup.style.display = 'none'; // Hide product name for treatments
                 } else {
-                    productNameGroup.style.display = 'block'; // Toon productnaam voor andere inkomsten
+                    productNameGroup.style.display = 'block'; // Show product name for other income
                 }
             } else if (type === 'expense') {
-                if (category && EXPENSE_CATEGORIES[category]) {
-                    EXPENSE_CATEGORIES[category].forEach(sub => {
+                if (category && window.appSettings.expenseCategories && window.appSettings.expenseCategories[category]) {
+                    window.appSettings.expenseCategories[category].forEach(sub => {
                         const option = document.createElement('option');
                         option.value = sub;
                         option.textContent = sub;
@@ -240,6 +280,41 @@
                     });
                 }
                 invoiceDateGroup.style.display = 'block';
+            }
+        }
+
+        /**
+         * Populates the payment method and person dropdowns for a given form element.
+         * @param {HTMLElement} formElement - The root element of the transaction form.
+         */
+        function populateDropdownsForForm(formElement) {
+            const paymentMethodSelect = formElement.querySelector('.transaction-payment-method-select');
+            const personSelect = formElement.querySelector('.transaction-person-select');
+
+            // Populate Payment Methods
+            if (paymentMethodSelect) {
+                paymentMethodSelect.innerHTML = '<option value="">Selecteer Methode</option>';
+                if (window.appSettings.paymentMethods) {
+                    window.appSettings.paymentMethods.forEach(method => {
+                        const option = document.createElement('option');
+                        option.value = method;
+                        option.textContent = method;
+                        paymentMethodSelect.appendChild(option);
+                    });
+                }
+            }
+
+            // Populate Persons
+            if (personSelect) {
+                personSelect.innerHTML = '<option value="">Selecteer Persoon</option>';
+                if (window.appSettings.persons) {
+                    window.appSettings.persons.forEach(person => {
+                        const option = document.createElement('option');
+                        option.value = person;
+                        option.textContent = person;
+                        personSelect.appendChild(option);
+                    });
+                }
             }
         }
 
@@ -271,7 +346,7 @@
             const productNameEl = formElement.querySelector('.transaction-product-name-input');
             const invoiceDateEl = formElement.querySelector('.transaction-invoice-date-input');
             const remarksEl = formElement.querySelector('.transaction-remarks-input');
-            const personEl = formElement.querySelector('.transaction-person-select'); // Aangepast naar select
+            const personEl = formElement.querySelector('.transaction-person-select');
             const quarterEl = formElement.querySelector('.transaction-quarter-input');
 
             const type = typeEl.value;
@@ -349,8 +424,16 @@
             newFormDiv.classList.add('transaction-form-item', 'bg-blue-50', 'p-4', 'rounded-lg', 'shadow-sm', 'mb-4');
             newFormDiv.id = formId;
 
-            let paymentMethodOptions = PAYMENT_METHODS.map(method => `<option value="${method}">${method}</option>`).join('');
-            let personOptions = PERSON_OPTIONS.map(person => `<option value="${person}">${person}</option>`).join('');
+            // Dynamically generate options for payment methods and persons from appSettings
+            let paymentMethodOptions = '<option value="">Selecteer Methode</option>';
+            if (window.appSettings.paymentMethods) {
+                paymentMethodOptions += window.appSettings.paymentMethods.map(method => `<option value="${method}">${method}</option>`).join('');
+            }
+
+            let personOptions = '<option value="">Selecteer Persoon</option>';
+            if (window.appSettings.persons) {
+                personOptions += window.appSettings.persons.map(person => `<option value="${person}">${person}</option>`).join('');
+            }
 
             newFormDiv.innerHTML = `
                 <h3 class="text-lg font-semibold mb-3 text-blue-700">Transactie #${transactionFormCounter}</h3>
@@ -382,7 +465,6 @@
                 <div class="form-group conditional-field" id="paymentMethodGroup_${formId}" style="display: none;">
                     <label for="paymentMethod_${formId}">Betalingsmethode:</label>
                     <select id="paymentMethod_${formId}" class="transaction-payment-method-select w-full p-2 border rounded-md">
-                        <option value="">Selecteer Methode</option>
                         ${paymentMethodOptions}
                     </select>
                 </div>
@@ -406,7 +488,6 @@
                 <div class="form-group">
                     <label for="person_${formId}">Ingevoerd Door (Naam):</label>
                     <select id="person_${formId}" class="transaction-person-select w-full p-2 border rounded-md" required>
-                        <option value="">Selecteer Persoon</option>
                         ${personOptions}
                     </select>
                 </div>
@@ -471,9 +552,13 @@
                 removeTransactionForm(event.target.closest('.transaction-form-item'));
             });
 
-            // Initial population for the newly added form
-            window.updateCategoriesForForm(typeSelect, categorySelect);
-            window.updateSubcategoriesForForm(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup);
+            // Initial population for the newly added form (after appSettings might have loaded)
+            // This is crucial for initial display of dropdowns
+            if (window.isAuthReady && Object.keys(window.appSettings).length > 0) {
+                window.updateCategoriesForForm(typeSelect, categorySelect);
+                window.updateSubcategoriesForForm(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup);
+                populateDropdownsForForm(newFormDiv); // Populate payment methods and persons
+            }
         }
 
         /**
@@ -609,7 +694,8 @@
             document.getElementById('logoutBtn').addEventListener('click', window.logoutUser);
 
             // Voeg standaard één leeg transactieformulier toe voor bulk input
-            addTransactionForm();
+            // Dit wordt nu gedaan nadat appSettings mogelijk zijn geladen via onSnapshot
+            // addTransactionForm(); // Removed from here, will be called by loadAppSettings or on first appSettings load
         };
     </script>
     <style>
