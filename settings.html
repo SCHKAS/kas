@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financiële Tracker - Instellingen</title>
+    <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
+    <link rel="manifest" href="manifest.json"> <!-- Link naar het PWA manifest bestand -->
+    <script>
+        // Registreer de Service Worker voor PWA functionaliteit
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase instances
+        window.firebaseApp = null;
+        window.db = null;
+        window.auth = null;
+        window.userId = null;
+        window.isAuthReady = false;
+        window.appSettings = {}; // Global object to hold current settings
+        window.selectedCategoryType = 'income'; // Tracks which category type is being edited
+        window.selectedCategory = ''; // Tracks which specific category is selected for subcategory editing
+
+        // Initialize Firebase and set up authentication
+        window.initFirebase = async () => {
+            const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
+            window.APP_ID = APP_ID;
+
+            let firebaseConfig = {
+              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+              authDomain: "schkas-66d27.firebaseapp.com",
+              projectId: "schkas-66d27",
+              storageBucket: "schkas-66d27.firebasestorage.app",
+              messagingSenderId: "987453212703",
+              appId: "1:987453212703:web:dcee394027367b74df2d2a",
+              measurementId: "G-9M60TQGKJZ"
+            };
+
+            if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken. Werk firebaseConfig bij met je echte Firebase projectgegevens.");
+            }
+
+            window.firebaseApp = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.firebaseApp);
+            window.auth = getAuth(window.firebaseApp);
+
+            onAuthStateChanged(window.auth, (user) => {
+                if (user) {
+                    window.userId = user.uid;
+                    window.isAuthReady = true;
+                    // Removed document.getElementById('currentUserId').textContent = window.userId; as user management section is removed
+                    loadSettings(); // Load settings once authenticated
+                } else {
+                    window.location.href = 'auth.html';
+                }
+            });
+        };
+
+        // --- Firestore Operations for Settings ---
+
+        /**
+         * Laadt de applicatie-instellingen van Firestore.
+         * Initialiseert het document als het nog niet bestaat.
+         */
+        window.loadSettings = function() {
+            if (!window.db || !window.userId) {
+                console.error("Firestore of User ID is niet geïnitialiseerd. Kan instellingen niet laden.");
+                return;
+            }
+
+            const settingsDocRef = doc(window.db, `artifacts/${window.APP_ID}/public/data/settings`, 'appSettings');
+
+            onSnapshot(settingsDocRef, async (docSnap) => {
+                if (docSnap.exists()) {
+                    window.appSettings = docSnap.data();
+                    console.log("Instellingen geladen:", window.appSettings);
+                } else {
+                    // Document bestaat niet, initialiseer het met standaardwaarden
+                    console.log("Instellingen document niet gevonden, initialiseren met standaardwaarden.");
+                    window.appSettings = {
+                        incomeCategories: {
+                            'Behandelingen': ['Suikerontharing', 'Laserontharing', 'Nagels', 'Manicure', 'Pedicure', 'Gelaatsverzorging', 'Massage', 'Wimpers/brows', 'Spraytan', 'Make up', 'LPG', 'Celestetic', 'Andere'],
+                            'Verkoop': ['Voorschotten', 'Biologique Recherche', 'I AM KLEAN', 'LPG', 'Atelier Rebul', 'Lash Extend', 'My Lamination', 'Pandhys', 'OPI', 'Abonnementen', 'Cadeaubon', 'Footlogix', 'Celestetic', 'Andere']
+                        },
+                        expenseCategories: {
+                            'Lonen': ['Lonen'], 'Derden': ['Derden'], 'Huur': ['Huur'], 'Producten': ['Producten'],
+                            'Nutsvoorziening': ['Nutsvoorziening'], 'Boekhouder': ['Boekhouder'], 'Verzekeringen': ['Verzekeringen'],
+                            'Marketing': ['Marketing'], 'Software': ['Software'], 'Leasing': ['Leasing'],
+                            'Afbetaling': ['Afbetaling'], 'Loonkost': ['Loonkost'], 'Sponsoring': ['Sponsoring'],
+                            'BTW': ['BTW'], 'Andere': ['Andere']
+                        },
+                        paymentMethods: ['Cash', 'Payconiq/BC', 'Cadeaubon', 'Abonnement'],
+                        persons: ['Marlien', 'Kimberly', 'Yasmine', 'Jade']
+                    };
+                    try {
+                        await setDoc(settingsDocRef, window.appSettings);
+                        console.log("Standaard instellingen opgeslagen.");
+                    } catch (e) {
+                        console.error("Fout bij het opslaan van standaard instellingen:", e);
+                        showMessageBox("Fout bij het initialiseren van instellingen.");
+                    }
+                }
+                renderSettingsUI(); // Render de UI met de geladen/geïnitialiseerde instellingen
+            }, (error) => {
+                console.error("Fout bij het laden van instellingen:", error);
+                showMessageBox("Fout bij het laden van instellingen. Controleer console voor details.");
+            });
+        };
+
+        /**
+         * Slaat de huidige instellingen op in Firestore.
+         */
+        window.saveSettings = async function() {
+            if (!window.db || !window.userId) {
+                showMessageBox("Authenticatie is nog niet voltooid. Kan instellingen niet opslaan.");
+                return;
+            }
+            const settingsDocRef = doc(window.db, `artifacts/${window.APP_ID}/public/data/settings`, 'appSettings');
+            try {
+                await updateDoc(settingsDocRef, window.appSettings);
+                showMessageBox("Instellingen succesvol opgeslagen!");
+            } catch (e) {
+                console.error("Fout bij het opslaan van instellingen:", e);
+                showMessageBox("Fout bij het opslaan van instellingen. Probeer opnieuw.");
+            }
+        };
+
+        // --- UI Rendering Functions ---
+
+        /**
+         * Rendert alle instellingensecties in de UI.
+         */
+        function renderSettingsUI() {
+            renderPaymentMethods();
+            renderPersons();
+            renderCategoryManagement();
+        }
+
+        /**
+         * Rendert de lijst met betalingsmethoden.
+         */
+        function renderPaymentMethods() {
+            const list = document.getElementById('paymentMethodsList');
+            list.innerHTML = '';
+            if (window.appSettings.paymentMethods && window.appSettings.paymentMethods.length > 0) {
+                window.appSettings.paymentMethods.forEach(method => {
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2';
+                    li.innerHTML = `
+                        <span>${method}</span>
+                        <button data-item="${method}" data-type="paymentMethod" class="remove-item-btn bg-red-500 hover:bg-red-700 text-white text-xs px-2 py-1 rounded-md">Verwijder</button>
+                    `;
+                    list.appendChild(li);
+                });
+            } else {
+                list.innerHTML = '<li class="text-gray-600">Geen betalingsmethoden ingesteld.</li>';
+            }
+            document.getElementById('addPaymentMethodInput').value = '';
+        }
+
+        /**
+         * Rendert de lijst met personen.
+         */
+        function renderPersons() {
+            const list = document.getElementById('personsList');
+            list.innerHTML = '';
+            if (window.appSettings.persons && window.appSettings.persons.length > 0) {
+                window.appSettings.persons.forEach(person => {
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2';
+                    li.innerHTML = `
+                        <span>${person}</span>
+                        <button data-item="${person}" data-type="person" class="remove-item-btn bg-red-500 hover:bg-red-700 text-white text-xs px-2 py-1 rounded-md">Verwijder</button>
+                    `;
+                    list.appendChild(li);
+                });
+            } else {
+                list.innerHTML = '<li class="text-gray-600">Geen personen ingesteld.</li>';
+            }
+            document.getElementById('addPersonInput').value = '';
+        }
+
+        /**
+         * Rendert de sectie voor categoriebeheer.
+         */
+        function renderCategoryManagement() {
+            const incomeCategoryList = document.getElementById('incomeCategoriesList');
+            const expenseCategoryList = document.getElementById('expenseCategoriesList');
+
+            incomeCategoryList.innerHTML = '';
+            expenseCategoryList.innerHTML = '';
+
+            // Render Income Categories
+            if (window.appSettings.incomeCategories) {
+                for (const cat in window.appSettings.incomeCategories) {
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2';
+                    li.innerHTML = `
+                        <span>${cat}</span>
+                        <div>
+                            <button data-category="${cat}" data-type="income" class="select-category-btn bg-blue-500 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded-md mr-2">Subcategorieën</button>
+                            <button data-category="${cat}" data-type="income" class="remove-category-btn bg-red-500 hover:bg-red-700 text-white text-xs px-2 py-1 rounded-md">Verwijder</button>
+                        </div>
+                    `;
+                    incomeCategoryList.appendChild(li);
+                }
+            } else {
+                incomeCategoryList.innerHTML = '<li class="text-gray-600">Geen inkomstencategorieën ingesteld.</li>';
+            }
+            document.getElementById('addIncomeCategoryInput').value = '';
+
+            // Render Expense Categories
+            if (window.appSettings.expenseCategories) {
+                for (const cat in window.appSettings.expenseCategories) {
+                    const li = document.createElement('li');
+                    li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2';
+                    li.innerHTML = `
+                        <span>${cat}</span>
+                        <div>
+                            <button data-category="${cat}" data-type="expense" class="select-category-btn bg-blue-500 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded-md mr-2">Subcategorieën</button>
+                            <button data-category="${cat}" data-type="expense" class="remove-category-btn bg-red-500 hover:bg-red-700 text-white text-xs px-2 py-1 rounded-md">Verwijder</button>
+                        </div>
+                    `;
+                    expenseCategoryList.appendChild(li);
+                }
+            } else {
+                expenseCategoryList.innerHTML = '<li class="text-gray-600">Geen uitgavencategorieën ingesteld.</li>';
+            }
+            document.getElementById('addExpenseCategoryInput').value = '';
+
+            // Update subcategory display based on selected category
+            renderSubcategories();
+        }
+
+        /**
+         * Rendert de lijst met subcategorieën voor de geselecteerde hoofdcategorie.
+         */
+        function renderSubcategories() {
+            const subcategoryList = document.getElementById('subcategoriesList');
+            const subcategoryTitle = document.getElementById('subcategoriesTitle');
+            const addSubcategoryInput = document.getElementById('addSubcategoryInput');
+            const addSubcategoryBtn = document.getElementById('addSubcategoryBtn');
+
+            subcategoryList.innerHTML = '';
+            addSubcategoryInput.value = '';
+
+            if (window.selectedCategory) {
+                subcategoryTitle.textContent = `Subcategorieën voor "${window.selectedCategory}"`;
+                document.getElementById('subcategoryManagement').style.display = 'block';
+
+                let subcategories = [];
+                if (window.selectedCategoryType === 'income' && window.appSettings.incomeCategories[window.selectedCategory]) {
+                    subcategories = window.appSettings.incomeCategories[window.selectedCategory];
+                } else if (window.selectedCategoryType === 'expense' && window.appSettings.expenseCategories[window.selectedCategory]) {
+                    subcategories = window.appSettings.expenseCategories[window.selectedCategory];
+                }
+
+                if (subcategories.length > 0) {
+                    subcategories.forEach(sub => {
+                        const li = document.createElement('li');
+                        li.className = 'flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2';
+                        li.innerHTML = `
+                            <span>${sub}</span>
+                            <button data-item="${sub}" class="remove-subcategory-btn bg-red-500 hover:bg-red-700 text-white text-xs px-2 py-1 rounded-md">Verwijder</button>
+                        `;
+                        subcategoryList.appendChild(li);
+                    });
+                } else {
+                    subcategoryList.innerHTML = '<li class="text-gray-600">Geen subcategorieën ingesteld.</li>';
+                }
+            } else {
+                document.getElementById('subcategoryManagement').style.display = 'none';
+            }
+        }
+
+        // --- Event Handlers ---
+
+        /**
+         * Voegt een item toe aan een lijst in de instellingen.
+         * @param {string} type - Het type lijst (e.g., 'paymentMethods', 'persons').
+         * @param {HTMLInputElement} inputElement - Het input-element waar de waarde vandaan komt.
+         */
+        function addItem(type, inputElement) {
+            const value = inputElement.value.trim();
+            if (!value) {
+                showMessageBox('Voer een waarde in.');
+                return;
+            }
+            if (window.appSettings[type].includes(value)) {
+                showMessageBox('Dit item bestaat al.');
+                return;
+            }
+            window.appSettings[type].push(value);
+            saveSettings();
+        }
+
+        /**
+         * Verwijdert een item uit een lijst in de instellingen.
+         * @param {string} type - Het type lijst (e.g., 'paymentMethods', 'persons').
+         * @param {string} itemToRemove - Het item dat verwijderd moet worden.
+         */
+        function removeItem(type, itemToRemove) {
+            window.appSettings[type] = window.appSettings[type].filter(item => item !== itemToRemove);
+            saveSettings();
+        }
+
+        /**
+         * Voegt een hoofdcategorie toe.
+         * @param {string} type - 'income' of 'expense'.
+         * @param {HTMLInputElement} inputElement - Het input-element.
+         */
+        function addCategory(type, inputElement) {
+            const categoryName = inputElement.value.trim();
+            if (!categoryName) {
+                showMessageBox('Voer een categorienaam in.');
+                return;
+            }
+            const categories = type === 'income' ? window.appSettings.incomeCategories : window.appSettings.expenseCategories;
+            if (categories[categoryName]) {
+                showMessageBox('Deze categorie bestaat al.');
+                return;
+            }
+            categories[categoryName] = []; // Start met een lege array voor subcategorieën
+            saveSettings();
+        }
+
+        /**
+         * Verwijdert een hoofdcategorie.
+         * @param {string} type - 'income' of 'expense'.
+         * @param {string} categoryToRemove - De categorienaam.
+         */
+        function removeCategory(type, categoryToRemove) {
+            const categories = type === 'income' ? window.appSettings.incomeCategories : window.appSettings.expenseCategories;
+            if (!categories[categoryToRemove]) {
+                showMessageBox('Categorie niet gevonden.');
+                return;
+            }
+
+            // Custom confirmation dialog
+            const confirmDelete = confirm('Weet u zeker dat u de categorie "' + categoryToRemove + '" en al zijn subcategorieën wilt verwijderen?');
+            if (!confirmDelete) {
+                return; // User cancelled deletion
+            }
+
+            delete categories[categoryToRemove];
+            // Reset selected category if it was the one being removed
+            if (window.selectedCategory === categoryToRemove) {
+                window.selectedCategory = '';
+                window.selectedCategoryType = 'income'; // Reset to default
+            }
+            saveSettings();
+        }
+
+        /**
+         * Voegt een subcategorie toe aan de geselecteerde hoofdcategorie.
+         * @param {HTMLInputElement} inputElement - Het input-element.
+         */
+        function addSubcategory(inputElement) {
+            const subcategoryName = inputElement.value.trim();
+            if (!subcategoryName) {
+                showMessageBox('Voer een subcategorienaam in.');
+                return;
+            }
+            if (!window.selectedCategory) {
+                showMessageBox('Selecteer eerst een hoofdcategorie.');
+                return;
+            }
+
+            let targetSubcategories;
+            if (window.selectedCategoryType === 'income') {
+                targetSubcategories = window.appSettings.incomeCategories[window.selectedCategory];
+            } else if (window.selectedCategoryType === 'expense') {
+                targetSubcategories = window.appSettings.expenseCategories[window.selectedCategory];
+            }
+
+            if (!targetSubcategories) {
+                showMessageBox('Geselecteerde hoofdcategorie niet gevonden.');
+                return;
+            }
+
+            if (targetSubcategories.includes(subcategoryName)) {
+                showMessageBox('Deze subcategorie bestaat al in deze categorie.');
+                return;
+            }
+
+            targetSubcategories.push(subcategoryName);
+            saveSettings();
+        }
+
+        /**
+         * Verwijdert een subcategorie uit de geselecteerde hoofdcategorie.
+         * @param {string} subcategoryToRemove - De subcategorienaam.
+         */
+        function removeSubcategory(subcategoryToRemove) {
+            if (!window.selectedCategory) {
+                showMessageBox('Geen hoofdcategorie geselecteerd.');
+                return;
+            }
+
+            let targetSubcategories;
+            if (window.selectedCategoryType === 'income') {
+                targetSubcategories = window.appSettings.incomeCategories[window.selectedCategory];
+            } else if (window.selectedCategoryType === 'expense') {
+                targetSubcategories = window.appSettings.expenseCategories[window.selectedCategory];
+            }
+
+            if (!targetSubcategories) {
+                showMessageBox('Geselecteerde hoofdcategorie niet gevonden.');
+                return;
+            }
+
+            window.appSettings[window.selectedCategoryType === 'income' ? 'incomeCategories' : 'expenseCategories'][window.selectedCategory] = targetSubcategories.filter(sub => sub !== subcategoryToRemove);
+            saveSettings();
+        }
+
+
+        // Custom message box function (replaces alert() and confirm())
+        function showMessageBox(message) {
+            const messageBox = document.createElement('div');
+            messageBox.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background-color: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                z-index: 1000;
+                text-align: center;
+                max-width: 300px;
+                border: 1px solid #ccc;
+            `;
+            messageBox.innerHTML = `
+                <p>${message}</p>
+                <button style="margin-top: 15px; padding: 8px 15px; background-color: #63b3ed; color: white; border: none; border-radius: 5px; cursor: pointer;">OK</button>
+            `;
+            document.body.appendChild(messageBox);
+
+            messageBox.querySelector('button').onclick = () => {
+                document.body.removeChild(messageBox);
+            };
+        }
+
+        // Functie om af te melden
+        window.logoutUser = function() {
+            signOut(window.auth).then(() => {
+                console.log("Succesvol afgemeld.");
+                window.location.href = 'auth.html'; // Terug naar inlogpagina
+            }).catch((error) => {
+                console.error("Fout bij afmelden:", error);
+                showMessageBox("Fout bij afmelden. Probeer opnieuw.");
+            });
+        }
+
+        // Initialiseer de app bij het laden van de pagina
+        window.onload = function() {
+            window.initFirebase();
+
+            // Event listeners voor toevoegen
+            document.getElementById('addPaymentMethodBtn').addEventListener('click', () => addItem('paymentMethods', document.getElementById('addPaymentMethodInput')));
+            document.getElementById('addPersonBtn').addEventListener('click', () => addItem('persons', document.getElementById('addPersonInput')));
+            document.getElementById('addIncomeCategoryBtn').addEventListener('click', () => addCategory('income', document.getElementById('addIncomeCategoryInput')));
+            document.getElementById('addExpenseCategoryBtn').addEventListener('click', () => addCategory('expense', document.getElementById('addExpenseCategoryInput')));
+            document.getElementById('addSubcategoryBtn').addEventListener('click', () => addSubcategory(document.getElementById('addSubcategoryInput')));
+
+            // Event delegation voor verwijderen van items
+            document.getElementById('paymentMethodsList').addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-item-btn')) {
+                    removeItem('paymentMethods', e.target.dataset.item);
+                }
+            });
+            document.getElementById('personsList').addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-item-btn')) {
+                    removeItem('persons', e.target.dataset.item);
+                }
+            });
+            document.getElementById('incomeCategoriesList').addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-category-btn')) {
+                    removeCategory('income', e.target.dataset.category);
+                } else if (e.target.classList.contains('select-category-btn')) {
+                    window.selectedCategoryType = 'income';
+                    window.selectedCategory = e.target.dataset.category;
+                    renderCategoryManagement(); // Re-render om subcategorie sectie te updaten
+                }
+            });
+            document.getElementById('expenseCategoriesList').addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-category-btn')) {
+                    removeCategory('expense', e.target.dataset.category);
+                } else if (e.target.classList.contains('select-category-btn')) {
+                    window.selectedCategoryType = 'expense';
+                    window.selectedCategory = e.target.dataset.category;
+                    renderCategoryManagement(); // Re-render om subcategorie sectie te updaten
+                }
+            });
+            document.getElementById('subcategoriesList').addEventListener('click', (e) => {
+                if (e.target.classList.contains('remove-subcategory-btn')) {
+                    removeSubcategory(e.target.dataset.item);
+                }
+            });
+
+            // Navigatie en afmelden
+            document.getElementById('backToMainBtn').addEventListener('click', () => window.location.href = 'index.html');
+            document.getElementById('logoutBtn').addEventListener('click', window.logoutUser);
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Calibri', sans-serif;
+            background-color: #e0f2f7;
+            color: #4a5568;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #2c5282;
+            margin-bottom: 20px;
+            font-size: 2.2rem;
+        }
+        h2 {
+            color: #2c5282;
+            font-size: 1.6rem;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        h3 {
+            color: #4a5568;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+        .settings-section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background-color: #f7fafc;
+            border-radius: 10px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .form-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .form-group input[type="text"] {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+        }
+        .form-group button {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+            border-radius: 8px;
+            white-space: nowrap; /* Voorkomt dat de tekst in de knop afbreekt */
+            margin-top: 0; /* Overrides default button margin-top */
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+        }
+        li {
+            padding: 8px 0;
+            border-bottom: 1px dashed #edf2f7;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #63b3ed;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px; /* Default margin for main buttons */
+        }
+        button:hover {
+            background-color: #4299e1;
+            transform: translateY(-2px);
+        }
+        .remove-item-btn, .remove-category-btn, .remove-subcategory-btn {
+            background-color: #ef4444;
+        }
+        .remove-item-btn:hover, .remove-category-btn:hover, .remove-subcategory-btn:hover {
+            background-color: #dc2626;
+        }
+        .select-category-btn {
+            background-color: #4299e1;
+        }
+        .select-category-btn:hover {
+            background-color: #3182ce;
+        }
+        #subcategoryManagement {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e2f0f7; /* Lichter blauw voor subcategorie sectie */
+            border-radius: 8px;
+            border: 1px dashed #90cdf4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Instellingen</h1>
+
+        <!-- Removed "Gebruikers Beheren" section as requested -->
+
+        <div class="settings-section">
+            <h2>Betalingsmethoden Beheren</h2>
+            <div class="form-group">
+                <input type="text" id="addPaymentMethodInput" placeholder="Nieuwe betalingsmethode">
+                <button id="addPaymentMethodBtn">Toevoegen</button>
+            </div>
+            <ul id="paymentMethodsList">
+                <!-- Betalingsmethoden worden hier geladen -->
+            </ul>
+        </div>
+
+        <div class="settings-section">
+            <h2>Ingevoerd Door Beheren</h2>
+            <div class="form-group">
+                <input type="text" id="addPersonInput" placeholder="Nieuwe persoon">
+                <button id="addPersonBtn">Toevoegen</button>
+            </div>
+            <ul id="personsList">
+                <!-- Personen worden hier geladen -->
+            </ul>
+        </div>
+
+        <div class="settings-section">
+            <h2>Inkomsten Categorieën Beheren</h2>
+            <div class="form-group">
+                <input type="text" id="addIncomeCategoryInput" placeholder="Nieuwe inkomstencategorie">
+                <button id="addIncomeCategoryBtn">Toevoegen</button>
+            </div>
+            <ul id="incomeCategoriesList">
+                <!-- Inkomstencategorieën worden hier geladen -->
+            </ul>
+        </div>
+
+        <div class="settings-section">
+            <h2>Uitgaven Categorieën Beheren</h2>
+            <div class="form-group">
+                <input type="text" id="addExpenseCategoryInput" placeholder="Nieuwe uitgavencategorie">
+                <button id="addExpenseCategoryBtn">Toevoegen</button>
+            </div>
+            <ul id="expenseCategoriesList">
+                <!-- Uitgavencategorieën worden hier geladen -->
+            </ul>
+        </div>
+
+        <div id="subcategoryManagement" class="settings-section" style="display: none;">
+            <h3 id="subcategoriesTitle">Subcategorieën</h3>
+            <div class="form-group">
+                <input type="text" id="addSubcategoryInput" placeholder="Nieuwe subcategorie">
+                <button id="addSubcategoryBtn">Toevoegen</button>
+            </div>
+            <ul id="subcategoriesList">
+                <!-- Subcategorieën worden hier geladen -->
+            </ul>
+        </div>
+
+        <div class="button-group">
+            <button id="backToMainBtn">Terug naar Hoofdpagina</button>
+            <button id="logoutBtn" class="bg-red-500 hover:bg-red-700">Afmelden</button>
+        </div>
+    </div>
+</body>
+</html>
