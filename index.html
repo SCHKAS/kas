@@ -160,19 +160,21 @@
         }
         .button-group {
             display: grid;
-            grid-template-columns: repeat(2, 1fr); /* Aangepast naar 2 kolommen */
-            gap: 20px; /* Ruimte tussen de knoppen */
+            /* Probeer 5 kolommen te passen, met een minimum breedte van 130px per knop. */
+            /* Dit zorgt ervoor dat ze op grotere schermen naast elkaar staan en op kleinere schermen netjes inpakken. */
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 15px; /* Ruimte tussen de knoppen */
             margin-top: 30px;
             justify-items: center; /* Centreer items in de grid cellen */
         }
         button {
             background-color: #63b3ed;
             color: white;
-            padding: 15px 20px; /* Padding voor de tekst */
+            padding: 10px 15px; /* Kleinere padding voor de tekst */
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            font-size: 1.3rem; /* Iets grotere lettergrootte */
+            font-size: 1rem; /* Kleinere lettergrootte */
             font-weight: bold; /* Vetgedrukte tekst */
             transition: background-color 0.3s ease, transform 0.2s ease;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
@@ -183,16 +185,16 @@
             text-align: center;
             width: 100%; /* Vul de breedte van de grid cel */
             aspect-ratio: 1 / 1; /* Maak de knop vierkant */
-            min-height: 120px; /* Minimale hoogte voor grote knoppen */
+            min-height: 100px; /* Minimale hoogte voor kleinere knoppen */
         }
         button:hover {
             background-color: #4299e1;
             transform: translateY(-2px);
         }
         .button-icon {
-            width: 48px; /* Grootte van het icoon */
-            height: 48px;
-            margin-bottom: 10px; /* Ruimte tussen icoon en tekst */
+            width: 36px; /* Kleinere grootte van het icoon */
+            height: 36px;
+            margin-bottom: 8px; /* Ruimte tussen icoon en tekst */
             fill: currentColor; /* Zorgt ervoor dat het SVG-icoon de tekstkleur overneemt */
         }
         .user-id-display {
@@ -205,7 +207,7 @@
         /* Responsive aanpassingen voor kleinere schermen */
         @media (max-width: 768px) {
             .button-group {
-                grid-template-columns: repeat(2, 1fr); /* Blijft 2 kolommen op tablets */
+                grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); /* Blijft flexibel op tablets */
             }
         }
 
