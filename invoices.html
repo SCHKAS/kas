@@ -281,6 +281,10 @@
                 padding: 0;
                 margin-top: 0;
             }
+            /* Hide the main h1 "Facturen Opmaken" during print */
+            body > .container > h1 {
+                display: none;
+            }
             .form-section, .button-group, #savedInvoicesSection { /* Hide saved invoices section too */
                 display: none;
             }
@@ -292,17 +296,19 @@
                 overflow: visible;
                 width: 100%;
             }
-            /* Adjust the h1 in print mode */
+            /* Style the h1 inside invoiceOutput for print */
             #invoiceOutput h1 {
                 font-size: 2.5rem; /* Make it larger for print */
                 margin-bottom: 20px;
+                text-align: center; /* Center the title */
+                color: #2c5282; /* Ensure color matches theme */
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Facturen Opmaken</h1>
+        <h1>Facturen Opmaken</h1> <!-- This is the page title, will be hidden on print -->
 
         <div id="invoiceFormSection" class="form-section">
             <div class="form-group">
@@ -681,7 +687,7 @@
             `;
 
             const invoiceContent = `
-                <h1 style="text-align: center; color: #2c5282; margin-bottom: 20px; font-size: 2.5rem;">Factuur</h1> <!-- Changed title to "Factuur" -->
+                <h1 style="text-align: center; color: #2c5282; margin-bottom: 20px; font-size: 2.5rem;">Factuur</h1> <!-- Re-added "Factuur" as header for the invoice content -->
                 <div class="invoice-header">
                     <div class="company-info">
                         <h3>${companyDetails.name}</h3>
@@ -726,7 +732,6 @@
 
             document.getElementById('invoiceOutput').innerHTML = invoiceContent;
             document.getElementById('invoiceOutput').classList.remove('hidden');
-            // document.getElementById('exportButtonGroup').style.display = 'flex'; // This button group is now removed
         }
 
         function generateInvoiceNumber() {
@@ -857,7 +862,6 @@
                         window.print();
                         // Optionally hide the invoice output after printing
                         document.getElementById('invoiceOutput').classList.add('hidden');
-                        // document.getElementById('exportButtonGroup').style.display = 'none'; // This button group is now removed
                     }, 500); // Small delay
                 } else {
                     showMessageBox('Factuur niet gevonden voor export.');
@@ -912,7 +916,6 @@
 
                     // Hide generated invoice preview if visible
                     document.getElementById('invoiceOutput').classList.add('hidden');
-                    // document.getElementById('exportButtonGroup').style.display = 'none'; // This button group is now removed
 
                     showMessageBox(`Factuur ${invoiceData.invoiceNumber} geladen voor bewerking.`);
                 } else {
@@ -997,7 +1000,6 @@
 
             document.getElementById('totalAmountDisplay').value = '0.00';
             document.getElementById('invoiceOutput').classList.add('hidden');
-            // document.getElementById('exportButtonGroup').style.display = 'none'; // This button group is now removed
 
             // Switch back to generate mode
             document.getElementById('generateInvoiceBtn').style.display = 'inline-block';
