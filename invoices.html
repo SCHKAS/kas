@@ -292,6 +292,11 @@
                 overflow: visible;
                 width: 100%;
             }
+            /* Adjust the h1 in print mode */
+            #invoiceOutput h1 {
+                font-size: 2.5rem; /* Make it larger for print */
+                margin-bottom: 20px;
+            }
         }
     </style>
 </head>
@@ -362,12 +367,11 @@
         </div>
 
         <div id="invoiceOutput" class="hidden">
-            <!-- Factuur wordt hier gegenereerd -->
+            <!-- The invoice content will be generated here -->
+            <!-- The h1 for the invoice title will be dynamically added here -->
         </div>
 
-        <div class="button-group" id="exportButtonGroup" style="display: none;">
-            <button id="exportInvoiceBtn">Factuur Exporteren (Print/PDF)</button>
-        </div>
+        <!-- The exportButtonGroup is removed from here as per user request -->
 
         <div id="savedInvoicesSection">
             <h2 class="text-xl font-bold mb-4 text-blue-800">Opgeslagen Facturen</h2>
@@ -469,7 +473,8 @@
             document.getElementById('updateInvoiceBtn').addEventListener('click', updateInvoice);
             document.getElementById('newInvoiceBtn').addEventListener('click', clearForm);
             document.getElementById('backToMainBtn').addEventListener('click', () => window.history.back());
-            document.getElementById('exportInvoiceBtn').addEventListener('click', exportInvoice);
+            // Removed event listener for exportInvoiceBtn as the button is removed
+            // document.getElementById('exportInvoiceBtn').addEventListener('click', exportInvoice);
 
             // Event delegation for product line inputs and remove buttons
             document.getElementById('productLinesContainer').addEventListener('input', (event) => {
@@ -676,6 +681,7 @@
             `;
 
             const invoiceContent = `
+                <h1 style="text-align: center; color: #2c5282; margin-bottom: 20px; font-size: 2.5rem;">Factuur</h1> <!-- Changed title to "Factuur" -->
                 <div class="invoice-header">
                     <div class="company-info">
                         <h3>${companyDetails.name}</h3>
@@ -720,7 +726,7 @@
 
             document.getElementById('invoiceOutput').innerHTML = invoiceContent;
             document.getElementById('invoiceOutput').classList.remove('hidden');
-            document.getElementById('exportButtonGroup').style.display = 'flex';
+            // document.getElementById('exportButtonGroup').style.display = 'flex'; // This button group is now removed
         }
 
         function generateInvoiceNumber() {
@@ -803,7 +809,7 @@
                         <div class="invoice-item-actions">
                             <button data-invoice-id="${doc.id}" class="edit-button">Bewerken</button>
                             <button data-invoice-id="${doc.id}" class="delete-button">Verwijderen</button>
-                            <button data-invoice-id="${doc.id}" class="export-list-button">Exporteren</button> <!-- NEW EXPORT BUTTON -->
+                            <button data-invoice-id="${doc.id}" class="export-list-button">Exporteren</button>
                         </div>
                     `;
                     invoicesList.appendChild(li);
@@ -851,7 +857,7 @@
                         window.print();
                         // Optionally hide the invoice output after printing
                         document.getElementById('invoiceOutput').classList.add('hidden');
-                        document.getElementById('exportButtonGroup').style.display = 'none';
+                        // document.getElementById('exportButtonGroup').style.display = 'none'; // This button group is now removed
                     }, 500); // Small delay
                 } else {
                     showMessageBox('Factuur niet gevonden voor export.');
@@ -906,7 +912,7 @@
 
                     // Hide generated invoice preview if visible
                     document.getElementById('invoiceOutput').classList.add('hidden');
-                    document.getElementById('exportButtonGroup').style.display = 'none';
+                    // document.getElementById('exportButtonGroup').style.display = 'none'; // This button group is now removed
 
                     showMessageBox(`Factuur ${invoiceData.invoiceNumber} geladen voor bewerking.`);
                 } else {
@@ -991,7 +997,7 @@
 
             document.getElementById('totalAmountDisplay').value = '0.00';
             document.getElementById('invoiceOutput').classList.add('hidden');
-            document.getElementById('exportButtonGroup').style.display = 'none';
+            // document.getElementById('exportButtonGroup').style.display = 'none'; // This button group is now removed
 
             // Switch back to generate mode
             document.getElementById('generateInvoiceBtn').style.display = 'inline-block';
