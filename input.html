@@ -24,7 +24,7 @@
     <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase instances
@@ -65,26 +65,23 @@
             }
         };
 
-
         // Initialize Firebase and set up authentication
         window.initFirebase = async () => {
             // Updated app ID for this version to ensure data separation
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
             window.__app_id = appId; // Make it globally accessible for Firestore paths
 
-            let firebaseConfig = {};
-
             // De Firebase configuratie is nu direct hieronder geplakt.
             // Deze is afkomstig van jouw Firebase project: schkas-66d27
-            firebaseConfig = {
-              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-              authDomain: "schkas-66d27.firebaseapp.com",
-              projectId: "schkas-66d27",
-              storageBucket: "schkas-66d27.firebasestorage.app",
-              messagingSenderId: "987453212703",
-              appId: "1:987453212703:web:dcee394027367b74df2d2a"
+            let firebaseConfig = {
+                apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+                authDomain: "schkas-66d27.firebaseapp.com",
+                projectId: "schkas-66d27",
+                storageBucket: "schkas-66d27.firebasestorage.app",
+                messagingSenderId: "987453212703",
+                appId: "1:987453212703:web:dcee394027367b74df2d2a",
+                measurementId: "G-9M60TQGKJZ" // Added measurementId for consistency
             };
-            // measurementId is niet nodig voor de functionaliteit van deze app en is verwijderd.
 
             if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
                 console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken. Werk firebaseConfig bij met je echte Firebase projectgegevens.");
@@ -97,31 +94,18 @@
             window.auth = getAuth(window.firebaseApp);
 
             // Listen for authentication state changes
-            onAuthStateChanged(window.auth, async (user) => {
+            onAuthStateChanged(window.auth, (user) => {
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
-                } else {
-                    // Meld anoniem aan als er geen gebruiker is ingelogd
-                    try {
-                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                        if (__initial_auth_token) {
-                            await signInWithCustomToken(window.auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(window.auth);
-                        }
-                        window.userId = window.auth.currentUser.uid;
-                        console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
-                    } catch (error) {
-                        console.error("Fout tijdens anonieme aanmelding:", error);
-                    }
-                }
-                window.isAuthReady = true;
-                // Zodra authenticatie klaar is, laad transacties
-                if (window.userId) {
+                    window.isAuthReady = true;
+                    // Zodra authenticatie klaar is, laad transacties
                     loadTransactions(); // Still load to populate window.transactions for consistency
+                    document.getElementById('currentUserId').textContent = window.userId; // Display user ID
                 } else {
-                    console.warn("Gebruikers-ID niet beschikbaar na authenticatiestatuswijziging.");
+                    // User is not signed in, redirect to auth.html
+                    console.log("Geen gebruiker gevonden, doorsturen naar auth.html.");
+                    window.location.href = 'auth.html';
                 }
             });
         };
@@ -388,7 +372,7 @@
                 </div>
                 <div class="input-group" id="incomeCategoryGroup_${rowId}">
                     <label for="incomeCategorySelect_${rowId}">Inkomst Categorie:</label>
-                    <select id="incomeCategorySelect_${rowId}" onchange="toggleCategory(this.closest('.bulk-transaction-row')); updateIncomeCategoryColor(this)"></select>
+                    <select id="incomeCategorySelect_${rowId}" onchange="toggleCategory(this.closest('.bulk-transaction-row'); updateIncomeCategoryColor(this)"></select>
                 </div>
                 <div class="input-group" id="subcategoryGroup_${rowId}">
                     <label for="subcategorySelect_${rowId}">Subcategorie:</label>
@@ -589,8 +573,8 @@
          */
         window.loadTransactions = function() {
             showLoadingIndicator(true); // Toon laadindicator
-            if (!window.db) {
-                console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
+            if (!window.db || !window.userId) { // Ensure userId is available
+                console.error("Firestore of User ID is niet geïnitialiseerd. Kan transacties niet laden.");
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
                 return;
             }
@@ -606,54 +590,72 @@
                 if (editId && window.transactions.length > 0) {
                     const transactionToEdit = window.transactions.find(t => t.id === editId);
                     if (transactionToEdit) {
-                        document.getElementById('bulkTransactionContainer').innerHTML = ''; // Clear existing rows
+                        // Clear existing rows and add the one to edit
+                        document.getElementById('bulkTransactionContainer').innerHTML = '';
                         window.addBulkTransactionRow(transactionToEdit);
+                        // Remove the editId from the URL after loading
                         history.replaceState({}, document.title, window.location.pathname);
                     } else {
                         console.warn(`Transactie met ID ${editId} niet gevonden.`);
-                        window.addBulkTransactionRow(); // Add a default empty row if not found
+                        window.addBulkTransactionRow(); // Add a default empty row
                     }
                 } else if (document.querySelectorAll('.bulk-transaction-row').length === 0) {
+                    // Only add a default row if no rows exist (e.g., on initial load without editId)
                     window.addBulkTransactionRow();
                 }
-                showLoadingIndicator(false); // Verberg laadindicator na succesvol laden
+                showLoadingIndicator(false); // Verberg laadindicator na het laden
             }, (error) => {
-                console.error("Fout bij laden transacties:", error);
+                console.error("Fout bij laden transacties (onSnapshot error callback):", error);
                 showLoadingIndicator(false); // Verberg laadindicator bij fout
             });
-
-            document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
         }
 
+        // Functie om af te melden
+        window.logoutUser = function() {
+            signOut(window.auth).then(() => {
+                console.log("Succesvol afgemeld.");
+                window.location.href = 'auth.html'; // Terug naar inlogpagina
+            }).catch((error) => {
+                console.error("Fout bij afmelden:", error);
+                // Hier zou je een custom melding kunnen tonen in plaats van alert
+                alert("Fout bij afmelden. Probeer opnieuw.");
+            });
+        }
 
-        // Initialiseer de app bij het laden van de pagina
+        // Initialiseer Firebase en audio bij het laden van de pagina
         window.onload = function() {
-            window.initFirebase(); // Initialiseer Firebase
-            window.initAudio(); // Initialiseer audio context
+            window.initFirebase();
+            window.initAudio();
+            // Voeg event listener toe voor de afmeldknop
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', window.logoutUser);
+            }
         };
     </script>
     <style>
-        /* Tailwind CSS wordt gebruikt voor styling */
         body {
-            font-family: 'Calibri', sans-serif; /* Changed font to Calibri */
-            background-color: #e0f2f7; /* Soft pastel blue */
-            color: #4a5568; /* Darker grey for better readability */
+            font-family: 'Calibri', sans-serif;
+            background-color: #e0f2f7;
+            color: #4a5568;
             display: flex;
             justify-content: center;
-            align-items: flex-start; /* Lijn bovenaan uit */
+            align-items: flex-start;
             min-height: 100vh;
             margin: 0;
             padding: 20px;
             box-sizing: border-box;
+            flex-direction: column;
         }
         .container {
-            background-color: #ffffff; /* White for the main container */
+            background-color: #ffffff;
             padding: 30px;
             border-radius: 15px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            max-width: 900px; /* Bredere container */
+            max-width: 900px;
             width: 100%;
-            text-align: left;
+            text-align: center;
+            margin-bottom: 20px;
             position: relative; /* Voor de laadindicator */
         }
         .header-container {
@@ -662,24 +664,26 @@
             margin-bottom: 20px;
         }
         .header-container .logo-small {
-            max-width: 80px; /* Kleinere grootte voor logo op andere pagina's */
+            max-width: 80px;
             height: auto;
             margin-right: 20px;
             border-radius: 8px;
         }
         h1 {
-            color: #2c5282; /* Darker blue for headings */
+            color: #2c5282;
             font-size: 2.2rem;
-            flex-grow: 1; /* Neemt resterende ruimte in */
-            text-align: center; /* Centreer de titel */
+            flex-grow: 1;
+            text-align: center;
         }
         h2 {
             font-size: 1.8rem;
             margin-top: 30px;
             text-align: center;
+            color: #2c5282;
         }
         .input-group {
             margin-bottom: 15px;
+            text-align: left;
         }
         label {
             display: block;
@@ -687,21 +691,24 @@
             font-weight: bold;
             color: #4a5568;
         }
-        input[type="text"], input[type="number"], input[type="date"], select, textarea {
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        select,
+        textarea {
             width: 100%;
             padding: 10px;
-            border: 1px solid #a0aec0; /* Softer border color */
+            border: 1px solid #a0aec0;
             border-radius: 8px;
             box-sizing: border-box;
             font-size: 1rem;
-            transition: background-color 0.2s ease; /* Add transition for color changes */
         }
         textarea {
-            min-height: 80px;
+            min-height: 60px;
             resize: vertical;
         }
         button {
-            background-color: #63b3ed; /* Soft blue for buttons */
+            background-color: #63b3ed;
             color: white;
             padding: 12px 25px;
             border: none;
@@ -713,87 +720,15 @@
             margin-top: 10px;
         }
         button:hover {
-            background-color: #4299e1; /* Slightly darker blue on hover */
+            background-color: #4299e1;
             transform: translateY(-2px);
         }
-        .summary-section, .transaction-list-section {
-            margin-top: 40px;
-            border-top: 1px solid #e2e8f0;
-            padding-top: 30px;
-        }
-        .summary-item {
+        .button-group {
             display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px dashed #cbd5e0; /* Softer dashed border */
-        }
-        .summary-item:last-child {
-            border-bottom: none;
-        }
-        .summary-item strong {
-            color: #2d3748;
-        }
-        .total-vat {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #e53e3e; /* Red for VAT */
-            margin-top: 15px;
-            text-align: right;
-        }
-        .total-profit {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #48bb78; /* Green for profit */
-            margin-top: 20px;
-            text-align: right;
-        }
-        .error-message {
-            color: #e53e3e;
-            margin-top: 10px;
-            font-size: 0.9rem;
-            display: none; /* Standaard verborgen */
-        }
-        .transaction-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            table-layout: fixed; /* Added to fix column widths */
-        }
-        .transaction-table th, .transaction-table td {
-            border: 1px solid #e2e8f0;
-            padding: 8px; /* Adjusted padding */
-            text-align: left;
-            vertical-align: top; /* Ensure content aligns at the top */
-            overflow: hidden; /* Added for text truncation */
-            text-overflow: ellipsis; /* Added for text truncation */
-            white-space: nowrap; /* Added for text truncation */
-        }
-        .transaction-table th {
-            background-color: #ebf8ff; /* Lighter blue for table headers */
-            font-weight: bold;
-            color: #4a5568;
-        }
-        .transaction-table tr:nth-child(even) {
-            background-color: #f7fafc; /* Very light blue for even rows */
-        }
-        .transaction-table button {
-            padding: 6px 12px;
-            font-size: 0.9rem;
-            margin-right: 5px;
-            border-radius: 6px;
-            box-shadow: none;
-        }
-        .transaction-table button.edit-btn {
-            background-color: #fbd38d; /* Soft orange for edit */
-        }
-        .transaction-table button.edit-btn:hover {
-            background-color: #f6ad55;
-        }
-        .transaction-table button.delete-btn {
-            background-color: #fc8181; /* Soft red for delete */
-        }
-        .transaction-table button.delete-btn:hover {
-            background-color: #e53e3e;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+            flex-wrap: wrap;
         }
         .user-id-display {
             text-align: center;
@@ -801,97 +736,12 @@
             font-size: 0.9rem;
             color: #718096;
         }
-        /* Custom colors for categories (soft pastel versions) */
-        .bg-income { background-color: #d4edda; } /* Soft green */
-        .bg-expense { background-color: #f8d7da; } /* Soft red */
-        .bg-treatments { background-color: #cce5ff; } /* Soft blue */
-        .bg-sales { background-color: #e2d9f7; } /* Soft purple */
-
-        /* Specific column widths for better control */
-        .transaction-table th:nth-child(1), .transaction-table td:nth-child(1) { width: 10%; } /* Kwartaal */
-        .transaction-table th:nth-child(2), .transaction-table td:nth-child(2) { width: 8%; }  /* Type */
-        .transaction-table th:nth-child(3), .transaction-table td:nth-child(3) { width: 10%; } /* Categorie */
-        .transaction-table th:nth-child(4), .transaction-table td:nth-child(4) { width: 12%; } /* Subcategorie */
-        .transaction-table th:nth-child(5), .transaction-table td:nth-child(5) { width: 10%; } /* Betaling */
-        .transaction-table th:nth-child(6), .transaction-table td:nth-child(6) { width: 8%; }  /* Bedrag */
-        .transaction-table th:nth-child(7), .transaction-table td:nth-child(7) { width: 10%; } /* Klantnaam */
-        .transaction-table th:nth-child(8), .transaction-table td:nth-child(8) { width: 10%; } /* Productnaam */
-        .transaction-table th:nth-child(9), .transaction-table td:nth-child(9) { width: 10%; } /* Factuurdatum */
-        .transaction-table th:nth-child(10), .transaction-table td:nth-child(10) { width: 10%; } /* Opmerkingen */
-        .transaction-table th:nth-child(11), .transaction-table td:nth-child(11) { width: 10%; } /* Datum Ingave */
-        .transaction-table th:nth-child(12), .transaction-table td:nth-child(12) { width: 10%; } /* Ingevoerd Door */
-        .transaction-table th:nth-child(13), .transaction-table td:nth-child(13) { width: 15%; } /* Acties (buttons) */
-
-        /* Styling for Bulk Input Section */
-        .input-section { /* Renamed from .bulk-input-section */
-            margin-top: 40px;
-            border-top: 1px solid #e2e8f0;
-            padding-top: 30px;
-            background-color: #f0f8ff; /* Very light blue background */
-            border-radius: 10px;
-            padding: 20px;
+        .error-message {
+            color: #e53e3e;
+            font-size: 0.85rem;
+            margin-top: 5px;
+            display: none;
         }
-
-        .bulk-transaction-row {
-            border: 1px solid #b3e0ff; /* Soft blue border */
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            background-color: #ffffff;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            position: relative; /* For delete button positioning */
-            display: grid; /* Gebruik grid voor betere mobiele lay-out */
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* Flexibele kolommen */
-            gap: 10px; /* Ruimte tussen grid items */
-        }
-        /* Zorg dat input-group de volledige breedte inneemt in de grid */
-        .bulk-transaction-row .input-group {
-            grid-column: span 1; /* Standaard 1 kolom */
-            margin-bottom: 0; /* Geen extra margin, grid beheert spacing */
-        }
-        /* Sommige velden kunnen op mobiel de volledige breedte innemen */
-        @media (max-width: 640px) {
-            .bulk-transaction-row .input-group {
-                grid-column: span 2; /* Op kleine schermen 2 kolommen (volledige breedte als de grid 2 kolommen heeft) */
-            }
-            .bulk-transaction-row {
-                grid-template-columns: 1fr; /* Op zeer kleine schermen, stapel alles verticaal */
-            }
-            .bulk-transaction-row .input-group {
-                grid-column: span 1; /* Zorg dat ze de volledige breedte innemen in de 1-kolom grid */
-            }
-        }
-
-
-        .bulk-transaction-row .remove-row-btn {
-            background-color: #ef4444; /* Red for remove button */
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 5px 10px;
-            font-size: 0.8rem;
-            border-radius: 5px;
-            box-shadow: none;
-            z-index: 10; /* Zorg dat de knop boven de andere elementen ligt */
-        }
-        .bulk-transaction-row .remove-row-btn:hover {
-            background-color: #dc2626;
-            transform: translateY(-1px);
-        }
-        .bulk-buttons {
-            display: flex;
-            flex-direction: column; /* Stack buttons on small screens */
-            gap: 10px; /* Space between buttons */
-            margin-top: 20px;
-        }
-        @media (min-width: 640px) {
-            .bulk-buttons {
-                flex-direction: row; /* Row on larger screens */
-                justify-content: space-between;
-            }
-        }
-
-        /* Loading Indicator Styling */
         .loading-indicator {
             position: absolute;
             top: 0;
@@ -903,11 +753,11 @@
             justify-content: center;
             align-items: center;
             z-index: 100;
-            border-radius: 15px; /* Match container border-radius */
+            border-radius: 15px;
         }
         .spinner {
-            border: 4px solid #f3f3f3; /* Light grey */
-            border-top: 4px solid #3498db; /* Blue */
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -917,12 +767,64 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Bulk Transaction Specific Styles */
+        .bulk-transaction-row {
+            border: 1px solid #cbd5e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f7fafc;
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+        .bulk-transaction-row .remove-row-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: #e53e3e;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            font-size: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 10;
+            padding: 0; /* Remove padding to make it a perfect circle */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: background-color 0.2s ease;
+        }
+        .bulk-transaction-row .remove-row-btn:hover {
+            background-color: #c53030;
+            transform: scale(1.05);
+        }
+
+        /* Background colors for select options */
+        .bg-income { background-color: #9ae6b4; } /* Light green */
+        .bg-expense { background-color: #feb2b2; } /* Light red */
+        .bg-treatments { background-color: #bee3f8; } /* Light blue */
+        .bg-sales { background-color: #fbd38d; } /* Light orange */
+
+        /* Override button styles for the "Afmelden" button */
+        button#logoutBtn {
+            background-color: #ef4444; /* Red for logout */
+        }
+        button#logoutBtn:hover {
+            background-color: #dc2626;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header-container">
-            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small">
+            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small" onerror="this.onerror=null;this.src='https://placehold.co/80x80/000/fff?text=Logo+Niet+Gevonden';">
             <h1>Financiële Tracker - Invoer</h1>
         </div>
 
@@ -935,20 +837,20 @@
             <div class="spinner"></div>
         </div>
 
-        <!-- Bulk Input Section (now the main input) -->
         <div class="input-section">
-            <h2 class="text-xl font-semibold mb-4">Nieuwe Transacties Toevoegen (Bulk)</h2>
+            <h2 class="text-xl font-semibold mb-4">Nieuwe Transactie Invoeren</h2>
             <div id="bulkTransactionContainer">
-                <!-- Dynamically added bulk transaction rows will go here -->
+                <!-- Bulk transactie rijen worden hier dynamisch toegevoegd -->
             </div>
-            <div class="bulk-buttons">
-                <button onclick="addBulkTransactionRow()">Nieuwe Rij Toevoegen</button>
-                <button onclick="handleBulkTransactions()">Alle Transacties Toevoegen</button>
+            <div class="button-group">
+                <button onclick="addBulkTransactionRow()">Rij Toevoegen</button>
+                <button onclick="handleBulkTransactions()">Transacties Opslaan</button>
             </div>
         </div>
 
-        <div class="back-button-container">
+        <div class="button-group">
             <button onclick="navigateToHome()">Terug naar Start</button>
+            <button id="logoutBtn">Afmelden</button>
         </div>
     </div>
 </body>
