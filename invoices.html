@@ -437,9 +437,9 @@
             measurementId: "G-9M60TQGKJZ"
         };
 
-        // Define __app_id globally if it's not already defined by the environment
-        // This ensures it's available for Firestore paths.
-        const __app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : firebaseConfig.appId;
+        // Define APP_ID for use within this module
+        const APP_ID = typeof window.__app_id !== 'undefined' ? window.__app_id : firebaseConfig.appId;
+        console.log(`APP_ID (invoices.html module): ${APP_ID}`); // Debug log to confirm its value
 
         const companyDetails = {
             name: "Skin Clinic Heusden",
@@ -579,8 +579,8 @@
             // Save to Firestore
             if (isAuthReady && userId) {
                 try {
-                    // Use the globally defined __app_id
-                    const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
+                    // Use the globally defined APP_ID
+                    const invoicesColRef = collection(db, `artifacts/${APP_ID}/users/${userId}/invoices`);
                     await addDoc(invoicesColRef, invoiceData);
                     showMessageBox('Factuur succesvol opgeslagen!');
                     renderInvoice(invoiceData); // Display the generated invoice
@@ -616,8 +616,8 @@
 
             if (isAuthReady && userId) {
                 try {
-                    // Use the globally defined __app_id
-                    const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, currentEditingInvoiceId);
+                    // Use the globally defined APP_ID
+                    const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, currentEditingInvoiceId);
                     await updateDoc(invoiceDocRef, invoiceData);
                     showMessageBox('Factuur succesvol bijgewerkt!');
                     renderInvoice(invoiceData); // Display the updated invoice
@@ -806,8 +806,8 @@
                 noInvoicesElement.classList.add('hidden'); // Hide "no invoices" initially
             }
 
-            // Use the globally defined __app_id
-            const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
+            // Use the globally defined APP_ID
+            const invoicesColRef = collection(db, `artifacts/${APP_ID}/users/${userId}/invoices`);
             const q = query(invoicesColRef, orderBy("invoiceDate", "desc")); // Order by date descending
 
             onSnapshot(q, (snapshot) => {
@@ -875,8 +875,8 @@
             }
 
             try {
-                // Use the globally defined __app_id
-                const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
+                // Use the globally defined APP_ID
+                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, invoiceId);
                 const invoiceSnap = await getDoc(invoiceDocRef);
 
                 if (invoiceSnap.exists()) {
@@ -904,8 +904,8 @@
             }
 
             try {
-                // Use the globally defined __app_id
-                const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
+                // Use the globally defined APP_ID
+                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, invoiceId);
                 const invoiceSnap = await getDoc(invoiceDocRef);
 
                 if (invoiceSnap.exists()) {
@@ -1000,8 +1000,8 @@
             }
 
             try {
-                // Use the globally defined __app_id
-                const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
+                // Use the globally defined APP_ID
+                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, invoiceId);
                 await deleteDoc(invoiceDocRef);
                 showMessageBox('Factuur succesvol verwijderd!');
                 clearForm(); // Clear form if the deleted invoice was being edited
