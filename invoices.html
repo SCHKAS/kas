@@ -108,6 +108,11 @@
                     removeProductLine(event.target.closest('.remove-product-line-btn'));
                 }
             });
+
+            // Event listener for the new Print button
+            document.getElementById('printInvoiceBtn').addEventListener('click', () => {
+                window.print();
+            });
         });
 
         // Removed logoutUser function as the button is removed from this page.
@@ -371,6 +376,7 @@
             `;
             document.getElementById('invoiceOutput').innerHTML = invoiceContent;
             document.getElementById('invoiceOutput').classList.remove('hidden'); // Show the output section
+            document.getElementById('printButtonContainer').classList.remove('hidden'); // Show the print button container
         }
 
         function clearForm() {
@@ -404,6 +410,7 @@
             productLineCounter = 1; // Reset counter
             calculateTotalAmount();
             document.getElementById('invoiceOutput').classList.add('hidden'); // Hide the output section
+            document.getElementById('printButtonContainer').classList.add('hidden'); // Hide the print button container
             document.getElementById('generateInvoiceBtn').style.display = 'inline-block';
             document.getElementById('updateInvoiceBtn').style.display = 'none';
             currentEditingInvoiceId = null; // Clear editing state
@@ -512,6 +519,7 @@
             document.getElementById('generateInvoiceBtn').style.display = 'none';
             document.getElementById('updateInvoiceBtn').style.display = 'inline-block';
             document.getElementById('invoiceOutput').classList.add('hidden'); // Hide generated invoice when editing
+            document.getElementById('printButtonContainer').classList.add('hidden'); // Hide print button container when editing
             document.getElementById('invoiceFormSection').scrollIntoView({ behavior: 'smooth' }); // Scroll to top of form
         }
 
@@ -884,7 +892,7 @@
             body > .container > h1 {
                 display: none;
             }
-            .form-section, .button-group, #savedInvoicesSection { /* Hide saved invoices section too */
+            .form-section, .button-group, #savedInvoicesSection, #printButtonContainer { /* Hide saved invoices section and print button too */
                 display: none;
             }
             #invoiceOutput {
@@ -974,6 +982,10 @@
         <div id="invoiceOutput" class="hidden">
             <!-- The invoice content will be generated here -->
             <!-- The h1 for the invoice title will be dynamically added here -->
+        </div>
+
+        <div id="printButtonContainer" class="button-group hidden">
+            <button id="printInvoiceBtn" class="bg-blue-600 hover:bg-blue-800">Print Factuur</button>
         </div>
 
         <div id="savedInvoicesSection">
