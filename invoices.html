@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facturen Opmaken - Financiële Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Calibri', sans-serif;
+            background-color: #e0f2f7;
+            color: #4a5568;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align items to the top */
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            max-width: 900px; /* Increased max-width to accommodate saved invoices list */
+            width: 100%;
+            text-align: center;
+            margin-top: 20px; /* Add some margin from the top */
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        h1 {
+            color: #2c5282;
+            margin-bottom: 20px;
+            font-size: 2rem;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="email"],
+        .form-group input[type="tel"],
+        .form-group input[type="number"],
+        .form-group input[type="date"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+        }
+        button {
+            background-color: #63b3ed;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        button:hover {
+            background-color: #4299e1;
+            transform: translateY(-2px);
+        }
+
+        #invoiceOutput {
+            margin-top: 30px;
+            padding: 25px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background-color: #f7fafc;
+            text-align: left;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+            min-height: 200px;
+            overflow-y: auto;
+        }
+
+        #invoiceOutput h2 {
+            color: #2c5282;
+            margin-bottom: 15px;
+            font-size: 1.8rem;
+            text-align: center;
+        }
+
+        #invoiceOutput p {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        #invoiceOutput .invoice-header,
+        #invoiceOutput .invoice-details,
+        #invoiceOutput .invoice-summary,
+        #invoiceOutput .invoice-footer {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #cbd5e0;
+        }
+        #invoiceOutput .invoice-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        #invoiceOutput .invoice-header div {
+            flex: 1;
+            min-width: 250px;
+            margin-bottom: 10px;
+        }
+        #invoiceOutput .invoice-header .company-info,
+        #invoiceOutput .invoice-header .client-info {
+            text-align: left;
+        }
+        #invoiceOutput .invoice-header .company-info h3,
+        #invoiceOutput .invoice-header .client-info h3 {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #2c5282;
+        }
+        #invoiceOutput .invoice-details {
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2c5282;
+        }
+        #invoiceOutput .invoice-summary {
+            text-align: right;
+            border-top: 1px dashed #cbd5e0;
+            padding-top: 10px;
+            margin-top: 20px;
+        }
+        #invoiceOutput .invoice-summary p {
+            margin-bottom: 5px;
+        }
+        #invoiceOutput .invoice-summary .total-amount {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #2c5282;
+        }
+        #invoiceOutput .invoice-footer {
+            border-bottom: none;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #718096;
+        }
+
+        /* Styling for product lines table */
+        .invoice-items table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .invoice-items th, .invoice-items td {
+            border: 1px solid #e2e8f0;
+            padding: 10px;
+            text-align: left;
+        }
+        .invoice-items th {
+            background-color: #edf2f7;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        .invoice-items td.text-right {
+            text-align: right;
+        }
+
+        /* Product line input styling */
+        .product-line-item {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px; /* Smaller gap for inputs */
+            margin-bottom: 10px;
+            align-items: flex-end;
+            border: 1px solid #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f0f8ff;
+        }
+        .product-line-item > div {
+            flex: 1;
+            min-width: 120px; /* Adjust min-width for smaller screens */
+        }
+        .product-line-item input[type="text"],
+        .product-line-item input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e0;
+        }
+        .product-line-item button {
+            padding: 8px 12px;
+            font-size: 0.9rem;
+            min-width: unset; /* Override general button width */
+            aspect-ratio: unset;
+            height: 40px; /* Fixed height for remove button */
+        }
+
+        /* Saved Invoices List Styling */
+        #savedInvoicesSection {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background-color: #f7fafc;
+            text-align: left;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+        }
+        #savedInvoicesList {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #savedInvoicesList li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px dashed #cbd5e0;
+        }
+        #savedInvoicesList li:last-child {
+            border-bottom: none;
+        }
+        #savedInvoicesList .invoice-item-details {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        #savedInvoicesList .invoice-item-actions button {
+            margin-left: 10px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+        #savedInvoicesList .invoice-item-actions .edit-button {
+            background-color: #48bb78; /* Green for edit */
+        }
+        #savedInvoicesList .invoice-item-actions .edit-button:hover {
+            background-color: #38a169;
+        }
+        #savedInvoicesList .invoice-item-actions .delete-button {
+            background-color: #ef4444; /* Red for delete */
+        }
+        #savedInvoicesList .invoice-item-actions .delete-button:hover {
+            background-color: #dc2626;
+        }
+
+        /* Hide form elements when printing */
+        @media print {
+            body {
+                background-color: #fff;
+                justify-content: flex-start;
+                align-items: flex-start;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+                border-radius: 0;
+                max-width: 100%;
+                padding: 0;
+                margin-top: 0;
+            }
+            .form-section, .button-group, #savedInvoicesSection { /* Hide saved invoices section too */
+                display: none;
+            }
+            #invoiceOutput {
+                border: none;
+                box-shadow: none;
+                padding: 20px;
+                min-height: auto;
+                overflow: visible;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Facturen Opmaken</h1>
+
+        <div id="invoiceFormSection" class="form-section">
+            <div class="form-group">
+                <label for="clientName">Naam klant:</label>
+                <input type="text" id="clientName" placeholder="Naam van de klant" required>
+            </div>
+            <div class="form-group">
+                <label for="clientVat">BTW-nummer klant:</label>
+                <input type="text" id="clientVat" placeholder="BTW-nummer (optioneel)">
+            </div>
+            <div class="form-group">
+                <label for="clientAddress">Adres klant:</label>
+                <input type="text" id="clientAddress" placeholder="Straat, huisnummer, postcode, plaats" required>
+            </div>
+            <div class="form-group">
+                <label for="clientEmail">E-mail klant:</label>
+                <input type="email" id="clientEmail" placeholder="e-mailadres@voorbeeld.be">
+            </div>
+            <div class="form-group">
+                <label for="clientPhone">Telefoon klant:</label>
+                <input type="tel" id="clientPhone" placeholder="+32 123 45 67 89">
+            </div>
+
+            <h2 class="text-xl font-bold mt-6 mb-4 text-left text-blue-800">Productlijnen</h2>
+            <div id="productLinesContainer">
+                <!-- Productlijnen worden hier dynamisch toegevoegd -->
+                <div class="product-line-item">
+                    <div class="flex-1">
+                        <label for="itemDescription_1">Omschrijving:</label>
+                        <input type="text" id="itemDescription_1" class="item-description" placeholder="Product/Dienst" required oninput="calculateTotalAmount()">
+                    </div>
+                    <div class="w-20">
+                        <label for="itemQuantity_1">Aantal:</label>
+                        <input type="number" id="itemQuantity_1" class="item-quantity" value="1" min="1" required oninput="calculateTotalAmount()">
+                    </div>
+                    <div class="w-32">
+                        <label for="itemPrice_1">Prijs/stuk (incl. BTW):</label>
+                        <input type="number" id="itemPrice_1" class="item-price" step="0.01" placeholder="0.00" required oninput="calculateTotalAmount()">
+                    </div>
+                    <button type="button" onclick="removeProductLine(this)" class="bg-red-500 hover:bg-red-700 text-white p-2 rounded-md h-10 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
+                </div>
+            </div>
+            <button type="button" onclick="addProductLine()" class="bg-green-500 hover:bg-green-700 text-white px-4 py-2 rounded-md mt-4">Productlijn Toevoegen</button>
+
+            <div class="form-group mt-6">
+                <label for="totalAmountDisplay">Totaal bedrag (incl. 21% BTW):</label>
+                <input type="text" id="totalAmountDisplay" value="0.00" readonly class="bg-gray-100 text-right font-bold">
+            </div>
+            <div class="form-group">
+                <label for="invoiceDate">Datum factuur:</label>
+                <input type="date" id="invoiceDate" required>
+            </div>
+
+            <div class="button-group">
+                <button id="generateInvoiceBtn" onclick="generateAndSaveInvoice()">Factuur Genereren & Opslaan</button>
+                <button id="updateInvoiceBtn" onclick="updateInvoice()" style="display: none;">Factuur Bijwerken</button>
+                <button onclick="clearForm()">Nieuwe Factuur</button>
+                <button onclick="window.history.back()">Terug naar Hoofdpagina</button>
+            </div>
+        </div>
+
+        <div id="invoiceOutput" class="hidden">
+            <!-- Factuur wordt hier gegenereerd -->
+        </div>
+
+        <div class="button-group" id="exportButtonGroup" style="display: none;">
+            <button onclick="exportInvoice()">Factuur Exporteren (Print/PDF)</button>
+        </div>
+
+        <div id="savedInvoicesSection">
+            <h2 class="text-xl font-bold mb-4 text-blue-800">Opgeslagen Facturen</h2>
+            <ul id="savedInvoicesList">
+                <!-- Opgeslagen facturen worden hier geladen -->
+                <p id="loadingInvoices" class="text-gray-600">Facturen laden...</p>
+                <p id="noInvoices" class="text-gray-600 hidden">Geen opgeslagen facturen.</p>
+            </ul>
+        </div>
+    </div>
+
+    <script type="module">
+        // Firebase SDK imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase instances
+        let firebaseApp = null;
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let isAuthReady = false;
+        let currentEditingInvoiceId = null; // To keep track of the invoice being edited
+
+        const companyDetails = {
+            name: "Skin Clinic Heusden",
+            address: "Tramstraat 24, 9070 Heusden",
+            phone: "0469 16 60 28",
+            email: "info@skinclinicheusden.be",
+            bank: "KBC",
+            iban: "BE39 7350 6786 4319",
+            bic: "KREDBEBB",
+            vat: "BE1013.910.910"
+        };
+
+        const VAT_RATE = 0.21; // 21% BTW
+        let productLineCounter = 1; // Counter for unique IDs of product lines
+
+        // Initialize Firebase and set up authentication
+        async function initFirebase() {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
+
+            let firebaseConfig = {};
+            firebaseConfig = {
+              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+              authDomain: "schkas-66d27.firebaseapp.com",
+              projectId: "schkas-66d27",
+              storageBucket: "schkas-66d27.firebasestorage.app",
+              messagingSenderId: "987453212703",
+              appId: "1:987453212703:web:dcee394027367b74df2d2a"
+            };
+
+            if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken.");
+            }
+
+            firebaseApp = initializeApp(firebaseConfig);
+            db = getFirestore(firebaseApp);
+            auth = getAuth(firebaseApp);
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("Gebruiker geauthenticeerd:", userId);
+                } else {
+                    try {
+                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        if (__initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                        userId = auth.currentUser.uid;
+                        console.log("Anoniem aangemeld. Gebruikers-ID:", userId);
+                    } catch (error) {
+                        console.error("Fout tijdens anonieme aanmelding:", error);
+                    }
+                }
+                isAuthReady = true;
+                // Display the user ID on the page (if needed, though not directly on this page)
+                // document.getElementById('currentUserId').textContent = userId ? userId : 'Anonieme Gebruiker';
+                if (userId) {
+                    loadInvoices(); // Load invoices once authenticated
+                } else {
+                    document.getElementById('loadingInvoices').textContent = 'Meld u aan om facturen te laden.';
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set current date as default for invoiceDate
+            document.getElementById('invoiceDate').valueAsDate = new Date();
+            calculateTotalAmount(); // Calculate initial total if there's a default product line
+            initFirebase(); // Initialize Firebase on page load
+        });
+
+        function addProductLine(description = '', quantity = 1, price = 0) {
+            productLineCounter++;
+            const container = document.getElementById('productLinesContainer');
+            const newProductLine = document.createElement('div');
+            newProductLine.classList.add('product-line-item');
+            newProductLine.innerHTML = `
+                <div class="flex-1">
+                    <label for="itemDescription_${productLineCounter}">Omschrijving:</label>
+                    <input type="text" id="itemDescription_${productLineCounter}" class="item-description" placeholder="Product/Dienst" value="${description}" required oninput="calculateTotalAmount()">
+                </div>
+                <div class="w-20">
+                    <label for="itemQuantity_${productLineCounter}">Aantal:</label>
+                    <input type="number" id="itemQuantity_${productLineCounter}" class="item-quantity" value="${quantity}" min="1" required oninput="calculateTotalAmount()">
+                </div>
+                <div class="w-32">
+                    <label for="itemPrice_${productLineCounter}">Prijs/stuk (incl. BTW):</label>
+                    <input type="number" id="itemPrice_${productLineCounter}" class="item-price" step="0.01" placeholder="0.00" value="${price}" required oninput="calculateTotalAmount()">
+                </div>
+                <button type="button" onclick="removeProductLine(this)" class="bg-red-500 hover:bg-red-700 text-white p-2 rounded-md h-10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                </button>
+            `;
+            container.appendChild(newProductLine);
+            calculateTotalAmount();
+        }
+
+        function removeProductLine(buttonElement) {
+            const productLineItem = buttonElement.closest('.product-line-item');
+            if (document.querySelectorAll('.product-line-item').length > 1) {
+                productLineItem.remove();
+                calculateTotalAmount(); // Recalculate total after removing a line
+            } else {
+                showMessageBox('U moet minstens één productlijn hebben.');
+            }
+        }
+
+        function calculateTotalAmount() {
+            let total = 0;
+            const productLines = document.querySelectorAll('.product-line-item');
+            productLines.forEach(line => {
+                const quantityInput = line.querySelector('.item-quantity');
+                const priceInput = line.querySelector('.item-price');
+
+                const quantity = parseFloat(quantityInput.value) || 0;
+                const price = parseFloat(priceInput.value) || 0;
+
+                total += (quantity * price);
+            });
+            document.getElementById('totalAmountDisplay').value = total.toFixed(2);
+        }
+
+        async function generateAndSaveInvoice() {
+            const invoiceData = getFormData();
+
+            if (!invoiceData) { // If form validation failed
+                return;
+            }
+
+            // Generate invoice number before saving
+            invoiceData.invoiceNumber = generateInvoiceNumber();
+
+            // Save to Firestore
+            if (isAuthReady && userId) {
+                try {
+                    const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
+                    await addDoc(invoicesColRef, invoiceData);
+                    showMessageBox('Factuur succesvol opgeslagen!');
+                    renderInvoice(invoiceData); // Display the generated invoice
+                    clearForm(); // Clear form after saving
+                } catch (e) {
+                    console.error("Fout bij het opslaan van factuur: ", e);
+                    showMessageBox('Fout bij het opslaan van factuur. Probeer opnieuw.');
+                }
+            } else {
+                showMessageBox('Authenticatie is nog niet voltooid of er is geen gebruikers-ID. Kan factuur niet opslaan.');
+                renderInvoice(invoiceData); // Still display the invoice even if not saved
+            }
+        }
+
+        async function updateInvoice() {
+            if (!currentEditingInvoiceId) {
+                showMessageBox('Geen factuur geselecteerd om bij te werken.');
+                return;
+            }
+
+            const invoiceData = getFormData();
+            if (!invoiceData) {
+                return;
+            }
+
+            // Keep the original invoice number when updating
+            invoiceData.invoiceNumber = document.getElementById('invoiceNumberDisplay').textContent; // Assuming this is where it's displayed
+
+            if (isAuthReady && userId) {
+                try {
+                    const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, currentEditingInvoiceId);
+                    await updateDoc(invoiceDocRef, invoiceData);
+                    showMessageBox('Factuur succesvol bijgewerkt!');
+                    renderInvoice(invoiceData); // Display the updated invoice
+                    clearForm(); // Clear form after updating
+                } catch (e) {
+                    console.error("Fout bij het bijwerken van factuur: ", e);
+                    showMessageBox('Fout bij het bijwerken van factuur. Probeer opnieuw.');
+                }
+            } else {
+                showMessageBox('Authenticatie is nog niet voltooid of er is geen gebruikers-ID. Kan factuur niet bijwerken.');
+            }
+        }
+
+        function getFormData() {
+            const clientName = document.getElementById('clientName').value;
+            const clientVat = document.getElementById('clientVat').value;
+            const clientAddress = document.getElementById('clientAddress').value;
+            const clientEmail = document.getElementById('clientEmail').value;
+            const clientPhone = document.getElementById('clientPhone').value;
+            const invoiceDate = document.getElementById('invoiceDate').value;
+            const totalAmountInclVat = parseFloat(document.getElementById('totalAmountDisplay').value);
+
+            if (!clientName || !clientAddress || isNaN(totalAmountInclVat) || totalAmountInclVat <= 0 || !invoiceDate) {
+                showMessageBox('Vul alstublieft alle verplichte velden in en zorg voor een positief totaalbedrag.');
+                return null;
+            }
+
+            const productLines = [];
+            document.querySelectorAll('.product-line-item').forEach(line => {
+                const description = line.querySelector('.item-description').value;
+                const quantity = parseFloat(line.querySelector('.item-quantity').value) || 0;
+                const price = parseFloat(line.querySelector('.item-price').value) || 0;
+                if (description && quantity > 0 && price >= 0) {
+                    productLines.push({ description, quantity, price });
+                }
+            });
+
+            if (productLines.length === 0) {
+                showMessageBox('Voeg alstublieft ten minste één productlijn toe.');
+                return null;
+            }
+
+            return {
+                clientName,
+                clientVat,
+                clientAddress,
+                clientEmail,
+                clientPhone,
+                invoiceDate,
+                productLines,
+                totalAmountInclVat: totalAmountInclVat.toFixed(2)
+            };
+        }
+
+        function renderInvoice(invoiceData) {
+            const totalAmountInclVat = parseFloat(invoiceData.totalAmountInclVat);
+            const amountExclVat = (totalAmountInclVat / (1 + VAT_RATE)).toFixed(2);
+            const vatAmount = (totalAmountInclVat - amountExclVat).toFixed(2);
+            const dueDate = new Date(invoiceData.invoiceDate);
+            dueDate.setDate(dueDate.getDate() + 14);
+
+            let itemsTableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Omschrijving</th>
+                            <th>Aantal</th>
+                            <th class="text-right">Prijs/stuk (incl. BTW)</th>
+                            <th class="text-right">Totaal (incl. BTW)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            invoiceData.productLines.forEach(item => {
+                const lineTotal = (item.quantity * item.price).toFixed(2);
+                itemsTableHtml += `
+                    <tr>
+                        <td>${item.description}</td>
+                        <td>${item.quantity}</td>
+                        <td class="text-right">&euro; ${item.price.toFixed(2)}</td>
+                        <td class="text-right">&euro; ${lineTotal}</td>
+                    </tr>
+                `;
+            });
+            itemsTableHtml += `
+                    </tbody>
+                </table>
+            `;
+
+            const invoiceContent = `
+                <div class="invoice-header">
+                    <div class="company-info">
+                        <h3>${companyDetails.name}</h3>
+                        <p>${companyDetails.address}</p>
+                        <p>Telefoon: ${companyDetails.phone}</p>
+                        <p>E-mail: ${companyDetails.email}</p>
+                        <p>BTW nr.: ${companyDetails.vat}</p>
+                    </div>
+                    <div class="client-info">
+                        <h3>Factuur aan:</h3>
+                        <p>${invoiceData.clientName}</p>
+                        <p>${invoiceData.clientAddress}</p>
+                        ${invoiceData.clientVat ? `<p>BTW nr.: ${invoiceData.clientVat}</p>` : ''}
+                        ${invoiceData.clientEmail ? `<p>E-mail: ${invoiceData.clientEmail}</p>` : ''}
+                        ${invoiceData.clientPhone ? `<p>Telefoon: ${invoiceData.clientPhone}</p>` : ''}
+                    </div>
+                </div>
+                <div class="invoice-details">
+                    <p><strong>Factuurnummer:</strong> <span id="invoiceNumberDisplay">${invoiceData.invoiceNumber}</span></p>
+                    <p><strong>Factuurdatum:</strong> ${formatDate(invoiceData.invoiceDate)}</p>
+                    <p><strong>Vervaldatum:</strong> ${formatDate(dueDate.toISOString().split('T')[0])}</p>
+                </div>
+                <div class="invoice-body">
+                    <div class="invoice-items">
+                        ${itemsTableHtml}
+                    </div>
+                </div>
+                <div class="invoice-summary">
+                    <p>Subtotaal (excl. BTW): &euro; ${amountExclVat}</p>
+                    <p>BTW (21%): &euro; ${vatAmount}</p>
+                    <p class="total-amount">Totaal te betalen (incl. BTW): &euro; ${totalAmountInclVat.toFixed(2)}</p>
+                </div>
+                <div class="invoice-footer">
+                    <p>Gelieve het bedrag van &euro; ${totalAmountInclVat.toFixed(2)} over te maken op rekening:</p>
+                    <p><strong>Bank:</strong> ${companyDetails.bank}</p>
+                    <p><strong>IBAN:</strong> ${companyDetails.iban}</p>
+                    <p><strong>BIC:</strong> ${companyDetails.bic}</p>
+                    <p>Met vermelding van factuurnummer ${invoiceData.invoiceNumber}.</p>
+                    <p>Bedankt voor uw vertrouwen!</p>
+                </div>
+            `;
+
+            document.getElementById('invoiceOutput').innerHTML = invoiceContent;
+            document.getElementById('invoiceOutput').classList.remove('hidden');
+            document.getElementById('exportButtonGroup').style.display = 'flex';
+        }
+
+        function generateInvoiceNumber() {
+            const currentYear = new Date().getFullYear();
+            let lastInvoiceNumber = localStorage.getItem('lastInvoiceNumber');
+            let sequence = 1;
+
+            if (lastInvoiceNumber) {
+                const parts = lastInvoiceNumber.split('-');
+                const yearFromLast = parseInt(parts[0]);
+
+                if (yearFromLast === currentYear) {
+                    sequence = parseInt(parts[2]) + 1;
+                }
+            }
+
+            const newInvoiceNumber = `${currentYear}-F-${String(sequence).padStart(3, '0')}`;
+            localStorage.setItem('lastInvoiceNumber', newInvoiceNumber);
+            return newInvoiceNumber;
+        }
+
+        function formatDate(dateString) {
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            return new Date(dateString).toLocaleDateString('nl-BE', options);
+        }
+
+        function exportInvoice() {
+            window.print();
+        }
+
+        // --- Firestore Operations and UI Management ---
+
+        function loadInvoices() {
+            if (!db || !userId) {
+                console.warn("Firestore of User ID niet beschikbaar om facturen te laden.");
+                return;
+            }
+
+            const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
+            const q = query(invoicesColRef, orderBy("invoiceDate", "desc")); // Order by date descending
+
+            onSnapshot(q, (snapshot) => {
+                const invoicesList = document.getElementById('savedInvoicesList');
+                invoicesList.innerHTML = ''; // Clear existing list
+                document.getElementById('loadingInvoices').classList.add('hidden');
+
+                if (snapshot.empty) {
+                    document.getElementById('noInvoices').classList.remove('hidden');
+                    return;
+                } else {
+                    document.getElementById('noInvoices').classList.add('hidden');
+                }
+
+                snapshot.forEach(doc => {
+                    const invoice = doc.data();
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <div class="invoice-item-details">
+                            <strong>${invoice.invoiceNumber}</strong> - ${invoice.clientName} (${formatDate(invoice.invoiceDate)}) - &euro; ${invoice.totalAmountInclVat}
+                        </div>
+                        <div class="invoice-item-actions">
+                            <button onclick="editInvoice('${doc.id}')" class="edit-button">Bewerken</button>
+                            <button onclick="deleteInvoice('${doc.id}')" class="delete-button">Verwijderen</button>
+                        </div>
+                    `;
+                    invoicesList.appendChild(li);
+                });
+            }, (error) => {
+                console.error("Fout bij het laden van facturen: ", error);
+                document.getElementById('loadingInvoices').textContent = 'Fout bij het laden van facturen.';
+            });
+        }
+
+        async function editInvoice(invoiceId) {
+            if (!db || !userId) {
+                showMessageBox('Authenticatie is nog niet voltooid. Kan factuur niet bewerken.');
+                return;
+            }
+
+            try {
+                const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
+                const invoiceSnap = await getDoc(invoiceDocRef);
+
+                if (invoiceSnap.exists()) {
+                    const invoiceData = invoiceSnap.data();
+                    currentEditingInvoiceId = invoiceId; // Set the ID of the invoice being edited
+
+                    // Populate form fields
+                    document.getElementById('clientName').value = invoiceData.clientName || '';
+                    document.getElementById('clientVat').value = invoiceData.clientVat || '';
+                    document.getElementById('clientAddress').value = invoiceData.clientAddress || '';
+                    document.getElementById('clientEmail').value = invoiceData.clientEmail || '';
+                    document.getElementById('clientPhone').value = invoiceData.clientPhone || '';
+                    document.getElementById('invoiceDate').value = invoiceData.invoiceDate || '';
+
+                    // Clear existing product lines
+                    const productLinesContainer = document.getElementById('productLinesContainer');
+                    productLinesContainer.innerHTML = '';
+                    productLineCounter = 0; // Reset counter for new product line IDs
+
+                    // Add product lines from saved data
+                    if (invoiceData.productLines && invoiceData.productLines.length > 0) {
+                        invoiceData.productLines.forEach(item => {
+                            addProductLine(item.description, item.quantity, item.price);
+                        });
+                    } else {
+                        addProductLine(); // Add a default empty line if none exist
+                    }
+
+                    calculateTotalAmount(); // Ensure total is calculated after populating
+
+                    // Show update button, hide generate button
+                    document.getElementById('generateInvoiceBtn').style.display = 'none';
+                    document.getElementById('updateInvoiceBtn').style.display = 'inline-block';
+
+                    // Hide generated invoice preview if visible
+                    document.getElementById('invoiceOutput').classList.add('hidden');
+                    document.getElementById('exportButtonGroup').style.display = 'none';
+
+                    showMessageBox(`Factuur ${invoiceData.invoiceNumber} geladen voor bewerking.`);
+                } else {
+                    showMessageBox('Factuur niet gevonden.');
+                }
+            } catch (error) {
+                console.error("Fout bij het laden van factuur voor bewerking: ", error);
+                showMessageBox('Fout bij het laden van factuur voor bewerking.');
+            }
+        }
+
+        async function deleteInvoice(invoiceId) {
+            if (!db || !userId) {
+                showMessageBox('Authenticatie is nog niet voltooid. Kan factuur niet verwijderen.');
+                return;
+            }
+
+            // Custom confirmation dialog
+            const confirmDelete = await new Promise(resolve => {
+                const confirmBox = document.createElement('div');
+                confirmBox.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background-color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                    z-index: 1000;
+                    text-align: center;
+                    max-width: 300px;
+                    border: 1px solid #ccc;
+                `;
+                confirmBox.innerHTML = `
+                    <p>Weet u zeker dat u deze factuur wilt verwijderen?</p>
+                    <div style="margin-top: 15px;">
+                        <button id="confirmYes" style="margin-right: 10px; padding: 8px 15px; background-color: #ef4444; color: white; border: none; border-radius: 5px; cursor: pointer;">Ja</button>
+                        <button id="confirmNo" style="padding: 8px 15px; background-color: #63b3ed; color: white; border: none; border-radius: 5px; cursor: pointer;">Nee</button>
+                    </div>
+                `;
+                document.body.appendChild(confirmBox);
+
+                document.getElementById('confirmYes').onclick = () => {
+                    document.body.removeChild(confirmBox);
+                    resolve(true);
+                };
+                document.getElementById('confirmNo').onclick = () => {
+                    document.body.removeChild(confirmBox);
+                    resolve(false);
+                };
+            });
+
+            if (!confirmDelete) {
+                return; // User cancelled deletion
+            }
+
+            try {
+                const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
+                await deleteDoc(invoiceDocRef);
+                showMessageBox('Factuur succesvol verwijderd!');
+                clearForm(); // Clear form if the deleted invoice was being edited
+            } catch (error) {
+                console.error("Fout bij het verwijderen van factuur: ", error);
+                showMessageBox('Fout bij het verwijderen van factuur.');
+            }
+        }
+
+        function clearForm() {
+            document.getElementById('clientName').value = '';
+            document.getElementById('clientVat').value = '';
+            document.getElementById('clientAddress').value = '';
+            document.getElementById('clientEmail').value = '';
+            document.getElementById('clientPhone').value = '';
+            document.getElementById('invoiceDate').valueAsDate = new Date(); // Reset to current date
+
+            // Clear and reset product lines
+            const productLinesContainer = document.getElementById('productLinesContainer');
+            productLinesContainer.innerHTML = '';
+            productLineCounter = 0;
+            addProductLine(); // Add one default empty product line
+
+            document.getElementById('totalAmountDisplay').value = '0.00';
+            document.getElementById('invoiceOutput').classList.add('hidden');
+            document.getElementById('exportButtonGroup').style.display = 'none';
+
+            // Switch back to generate mode
+            document.getElementById('generateInvoiceBtn').style.display = 'inline-block';
+            document.getElementById('updateInvoiceBtn').style.display = 'none';
+            currentEditingInvoiceId = null; // Clear editing state
+        }
+
+        // Custom message box function (replaces alert() and confirm())
+        function showMessageBox(message) {
+            const messageBox = document.createElement('div');
+            messageBox.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background-color: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                z-index: 1000;
+                text-align: center;
+                max-width: 300px;
+                border: 1px solid #ccc;
+            `;
+            messageBox.innerHTML = `
+                <p>${message}</p>
+                <button style="margin-top: 15px; padding: 8px 15px; background-color: #63b3ed; color: white; border: none; border-radius: 5px; cursor: pointer;">OK</button>
+            `;
+            document.body.appendChild(messageBox);
+
+            messageBox.querySelector('button').onclick = () => {
+                document.body.removeChild(messageBox);
+            };
+        }
+    </script>
+</body>
+</html>

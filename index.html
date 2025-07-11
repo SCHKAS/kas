@@ -49,6 +49,8 @@
 
             let firebaseConfig = {};
 
+            // IMPORTANT: In a real application, you should load this configuration securely.
+            // For this example, it's hardcoded as provided.
             firebaseConfig = {
               apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
               authDomain: "schkas-66d27.firebaseapp.com",
@@ -85,6 +87,7 @@
                     }
                 }
                 window.isAuthReady = true;
+                // Display the user ID on the page
                 document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
             });
         };
@@ -98,9 +101,14 @@
             window.location.href = 'overview.html';
         }
 
-        // Nieuwe functie om naar de exportpagina te navigeren
+        // Functie om naar de exportpagina te navigeren
         window.navigateToExport = function() {
             window.location.href = 'export.html';
+        }
+
+        // NIEUWE functie om naar de facturen opmaak pagina te navigeren
+        window.navigateToInvoices = function() {
+            window.location.href = 'invoices.html';
         }
 
         // Initialiseer Firebase bij het laden van de pagina
@@ -126,7 +134,7 @@
             padding: 30px;
             border-radius: 15px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            max-width: 900px; /* Bredere container om 3 knoppen naast elkaar te passen */
+            max-width: 900px; /* Bredere container om knoppen naast elkaar te passen */
             width: 100%;
             text-align: center;
         }
@@ -146,7 +154,7 @@
         }
         .button-group {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* 3 kolommen, flexibel */
+            grid-template-columns: repeat(2, 1fr); /* Aangepast naar 2 kolommen */
             gap: 20px; /* Ruimte tussen de knoppen */
             margin-top: 30px;
             justify-items: center; /* Centreer items in de grid cellen */
@@ -191,7 +199,7 @@
         /* Responsive aanpassingen voor kleinere schermen */
         @media (max-width: 768px) {
             .button-group {
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); /* 2 kolommen op tablets */
+                grid-template-columns: repeat(2, 1fr); /* Blijft 2 kolommen op tablets */
             }
         }
 
@@ -237,6 +245,17 @@
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
                 <span>Rapporten Exporteren</span>
+            </button>
+            <!-- NIEUWE KNOP: Facturen opmaken -->
+            <button onclick="navigateToInvoices()">
+                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <line x1="10" y1="9" x2="8" y2="9"></line>
+                </svg>
+                <span>Facturen Opmaken</span>
             </button>
         </div>
     </div>
