@@ -22,7 +22,7 @@
     <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase instances
@@ -32,12 +32,12 @@
         window.userId = null;
         window.isAuthReady = false;
 
-        // Make Firestore functions globally available (though not all are strictly needed on index.html)
+        // Make Firestore functions globally available
         window.collection = collection;
         window.addDoc = addDoc;
         window.onSnapshot = onSnapshot;
         window.doc = doc;
-        window.updateDoc = updateDoc;
+        window.updateDoc = updateDoc; // This refers to the Firestore updateDoc
         window.deleteDoc = deleteDoc;
         window.query = query;
         window.orderBy = orderBy;
@@ -47,15 +47,17 @@
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
             window.__app_id = appId;
 
-            // Firebase configuration (updated with user-provided config)
-            let firebaseConfig = {
-                apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-                authDomain: "schkas-66d27.firebaseapp.com",
-                projectId: "schkas-66d27",
-                storageBucket: "schkas-66d27.firebasestorage.app",
-                messagingSenderId: "987453212703",
-                appId: "1:987453212703:web:dcee394027367b74df2d2a",
-                measurementId: "G-9M60TQGKJZ" // Added measurementId from user's config
+            let firebaseConfig = {};
+
+            // IMPORTANT: In a real application, you should load this configuration securely.
+            // For this example, it's hardcoded as provided.
+            firebaseConfig = {
+              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+              authDomain: "schkas-66d27.firebaseapp.com",
+              projectId: "schkas-66d27",
+              storageBucket: "schkas-66d27.firebasestorage.app",
+              messagingSenderId: "987453212703",
+              appId: "1:987453212703:web:dcee394027367b74df2d2a"
             };
 
             if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
@@ -66,19 +68,27 @@
             window.db = getFirestore(window.firebaseApp);
             window.auth = getAuth(window.firebaseApp);
 
-            onAuthStateChanged(window.auth, (user) => {
+            onAuthStateChanged(window.auth, async (user) => {
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
-                    window.isAuthReady = true;
-                    // Display the user ID on the page
-                    document.getElementById('currentUserId').textContent = window.userId;
                 } else {
-                    // User is not signed in, redirect to auth.html
-                    console.log("Geen gebruiker gevonden, doorsturen naar auth.html.");
-                    window.location.href = 'auth.html';
+                    try {
+                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        if (__initial_auth_token) {
+                            await signInWithCustomToken(window.auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(window.auth);
+                        }
+                        window.userId = window.auth.currentUser.uid;
+                        console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
+                    } catch (error) {
+                        console.error("Fout tijdens anonieme aanmelding:", error);
+                    }
                 }
-                console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`); // Debug log
+                window.isAuthReady = true;
+                // Display the user ID on the page
+                document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
             });
         };
 
@@ -96,36 +106,25 @@
             window.location.href = 'export.html';
         }
 
-        // Functie om naar de facturen opmaak pagina te navigeren
+        // NIEUWE functie om naar de facturen opmaak pagina te navigeren
         window.navigateToInvoices = function() {
             window.location.href = 'invoices.html';
         }
 
-        // NIEUWE functie om naar de instellingenpagina te navigeren
         window.navigateToSettings = function() {
-            window.location.href = 'settings.html'; // Er wordt van uitgegaan dat je een settings.html pagina zult maken
+            window.location.href = 'settings.html';
         }
 
-        // Functie om af te melden
         window.logoutUser = function() {
-            signOut(window.auth).then(() => {
-                console.log("Succesvol afgemeld.");
-                window.location.href = 'auth.html'; // Terug naar inlogpagina
-            }).catch((error) => {
-                console.error("Fout bij afmelden:", error);
-                // Hier zou je een custom melding kunnen tonen in plaats van alert
-                alert("Fout bij afmelden. Probeer opnieuw.");
-            });
+            // Placeholder for actual logout logic if needed on this page
+            // For now, just redirect to auth.html
+            window.location.href = 'auth.html';
         }
 
         // Initialiseer Firebase bij het laden van de pagina
         window.onload = function() {
             window.initFirebase();
-            // Voeg event listener toe voor de afmeldknop, indien aanwezig
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn) {
-                logoutBtn.addEventListener('click', window.logoutUser);
-            }
+            document.getElementById('logoutBtn').addEventListener('click', window.logoutUser);
         };
     </script>
     <style>
@@ -148,7 +147,11 @@
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
             max-width: 900px; /* Bredere container om knoppen naast elkaar te passen */
             width: 100%;
-            text-align: center;
+            /* Nieuwe flexbox-eigenschappen voor verticale centrering van inhoud */
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Centreer inhoud verticaal */
+            align-items: center; /* Centreer inhoud horizontaal */
         }
         .logo-container {
             text-align: center;
@@ -163,43 +166,59 @@
             color: #2c5282;
             margin-bottom: 30px;
             font-size: 2.5rem;
+            text-align: center; /* Zorg ervoor dat de titel gecentreerd blijft */
         }
         .button-group {
             display: grid;
             grid-template-columns: repeat(3, 1fr); /* 3 kolommen voor desktop */
-            gap: 15px; /* Ruimte tussen de knoppen */
+            gap: 10px; /* Minder ruimte tussen knoppen om ze dichter bij elkaar te plaatsen */
             margin-top: 30px;
-            justify-items: center; /* Centreer items in de grid cellen */
+            /* Deze regels blijven, ze centreren de grid-container zelf */
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
         }
         button {
-            background-color: #63b3ed;
+            background-color: #63b3ed; /* Default blue, will be overridden by specific buttons */
             color: white;
-            padding: 10px 15px; /* Kleinere padding voor de tekst */
+            padding: 5px; /* Minder padding om knop kleiner te maken */
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            font-size: 1rem; /* Kleinere lettergrootte */
-            font-weight: bold; /* Vetgedrukte tekst */
+            font-size: 0.8rem; /* Kleinere lettergrootte voor tekst */
+            font-weight: bold;
             transition: background-color 0.3s ease, transform 0.2s ease;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            display: flex; /* Gebruik flexbox voor centreren van tekst en icoon */
-            flex-direction: column; /* Stapel icoon en tekst verticaal */
-            justify-content: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Tekst naar onderen duwen */
             align-items: center;
             text-align: center;
-            width: 100%; /* Vul de breedte van de grid cel */
-            aspect-ratio: 1 / 1; /* Maak de knop vierkant */
-            min-height: 120px; /* Minimale hoogte voor de knoppen */
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            min-height: 80px; /* Nog kleinere minimale hoogte */
+            max-width: 150px; /* Maximale breedte om knoppen compact te houden */
         }
+        /* Lichtere pastel roze bij hover voor alle knoppen */
         button:hover {
-            background-color: #4299e1;
+            background-color: #ffe0f0; /* Lichtere pastel roze */
             transform: translateY(-2px);
         }
         .button-icon {
-            width: 48px; /* Grotere grootte van het icoon */
-            height: 48px;
-            margin-bottom: 10px; /* Meer ruimte tussen icoon en tekst */
-            fill: currentColor; /* Zorgt ervoor dat het SVG-icoon de tekstkleur overneemt */
+            width: 100%; /* Icoon vult de breedte van de knop */
+            height: 100%; /* Icoon vult de hoogte van de knop */
+            margin-bottom: 5px; /* Ruimte tussen icoon en tekst */
+            flex-grow: 1; /* Laat icoon de resterende ruimte innemen */
+            display: flex; /* Gebruik flexbox voor centreren van SVG binnen de icon-div */
+            justify-content: center;
+            align-items: center;
+            fill: currentColor;
+            padding: 0px; /* Geen padding binnen het icoon gebied voor maximale grootte */
+            box-sizing: border-box; /* Zorgt ervoor dat padding de grootte niet beïnvloedt */
+        }
+        .button-icon svg { /* Ensure the SVG itself fills its container */
+            width: 70%; /* Maak SVG 30% kleiner */
+            height: 70%; /* Maak SVG 30% kleiner */
         }
         .user-id-display {
             text-align: center;
@@ -208,16 +227,33 @@
             color: #718096;
         }
 
+        /* Specifieke stijl voor de Afmelden knop (pastel goud) */
+        button#logoutBtn {
+            background-color: #f0e68c; /* Pastel goud */
+        }
+        /* Hover voor Afmelden knop is al gedekt door de algemene button:hover regel */
+
         /* Responsive aanpassingen voor kleinere schermen */
         @media (max-width: 992px) { /* Tablet size, adjust as needed */
             .button-group {
                 grid-template-columns: repeat(2, 1fr); /* 2 kolommen voor tablets */
+                gap: 10px; /* Pas de gap aan voor tablets */
+            }
+            button {
+                min-height: 90px; /* Iets groter op tablets */
             }
         }
 
         @media (max-width: 480px) {
             .button-group {
                 grid-template-columns: 1fr; /* 1 kolom op mobiele telefoons */
+                gap: 5px; /* Pas de gap aan voor mobiel */
+            }
+            button {
+                min-height: 100px; /* Iets groter op mobiel */
+                max-width: 200px; /* Max breedte voor mobiel */
+                margin-left: auto;
+                margin-right: auto; /* Centreer de knop op mobiel */
             }
         }
     </style>
@@ -233,54 +269,66 @@
         </div>
         <div class="button-group">
             <button onclick="navigateToInput()">
-                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
+                <div class="button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                </div>
                 <span>Nieuwe Transactie Invoeren</span>
             </button>
             <button onclick="navigateToOverview()">
-                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="8" y1="6" x2="21" y2="6"></line>
-                    <line x1="8" y1="12" x2="21" y2="12"></line>
-                    <line x1="8" y1="18" x2="21" y2="18"></line>
-                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
-                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
-                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
-                </svg>
+                <div class="button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                </div>
                 <span>Overzicht Bekijken</span>
             </button>
             <button onclick="navigateToExport()">
-                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
+                <div class="button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                </div>
                 <span>Rapporten Exporteren</span>
             </button>
             <button onclick="navigateToInvoices()">
-                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <line x1="10" y1="9" x2="8" y2="9"></line>
-                </svg>
+                <div class="button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <line x1="10" y1="9" x2="8" y2="9"></line>
+                    </svg>
+                </div>
                 <span>Facturen Opmaken</span>
             </button>
             <button onclick="navigateToSettings()">
-                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.78 1.28a2 2 0 0 0 .73 2.73l.04.04a2 2 0 0 1 0 2.83l-.04.04a2 2 0 0 0-.73 2.73l.78 1.28a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.78-1.28a2 2 0 0 0-.73-2.73l-.04-.04a2 2 0 0 1 0-2.83l.04-.04a2 2 0 0 0 .73-2.73l-.78-1.28a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                    <circle cx="12" cy="12" r="3"></circle>
-                </svg>
+                <div class="button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.78 1.28a2 2 0 0 0 .73 2.73l.04.04a2 2 0 0 1 0 2.83l-.04.04a2 2 0 0 0-.73 2.73l.78 1.28a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.78-1.28a2 2 0 0 0-.73-2.73l-.04-.04a2 2 0 0 1 0-2.83l.04-.04a2 2 0 0 0 .73-2.73l-.78-1.28a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </div>
                 <span>Instellingen</span>
             </button>
-            <button id="logoutBtn" class="bg-red-500 hover:bg-red-700">
-                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                    <polyline points="17 16 22 12 17 8"></polyline>
-                    <line x1="22" y1="12" x2="10" y2="12"></line>
-                </svg>
+            <button id="logoutBtn">
+                <div class="button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="17 16 22 12 17 8"></polyline>
+                        <line x1="22" y1="12" x2="10" y2="12"></line>
+                    </svg>
+                </div>
                 <span>Afmelden</span>
             </button>
         </div>
