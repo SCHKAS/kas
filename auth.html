@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inloggen - Financiële Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Calibri', sans-serif;
+            background-color: #e0f2f7;
+            color: #4a5568;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .auth-container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #2c5282;
+            margin-bottom: 20px;
+            font-size: 2rem;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        .form-group input[type="email"],
+        .form-group input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+        }
+        button {
+            background-color: #63b3ed;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        button:hover {
+            background-color: #4299e1;
+            transform: translateY(-2px);
+        }
+        #messageBox {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #fbd38d; /* Light orange for messages */
+            color: #975a16; /* Darker orange text */
+            display: none; /* Hidden by default */
+        }
+        #messageBox.error {
+            background-color: #feb2b2; /* Light red for errors */
+            color: #c53030; /* Darker red text */
+        }
+        #messageBox.success {
+            background-color: #9ae6b4; /* Light green for success */
+            color: #2f855a; /* Darker green text */
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h1>Inloggen of Registreren</h1>
+
+        <div class="form-group">
+            <label for="email">E-mailadres:</label>
+            <input type="email" id="email" placeholder="jouw@email.com" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Wachtwoord:</label>
+            <input type="password" id="password" placeholder="Wachtwoord" required>
+        </div>
+
+        <div class="button-group">
+            <button id="signInBtn">Aanmelden</button>
+            <button id="signUpBtn">Registreren</button>
+        </div>
+
+        <div id="messageBox"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // Firebase configuration (replace with your actual Firebase config)
+        let firebaseConfig = {};
+        firebaseConfig = {
+          apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+          authDomain: "schkas-66d27.firebaseapp.com",
+          projectId: "schkas-66d27",
+          storageBucket: "schkas-66d27.firebasestorage.app",
+          messagingSenderId: "987453212703",
+          appId: "1:987453212703:web:dcee394027367b74df2d2a"
+        };
+
+        if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
+            console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Authenticatie zal niet werken.");
+            showMessage('Fout: Firebase configuratie ontbreekt.', 'error');
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const signInBtn = document.getElementById('signInBtn');
+        const signUpBtn = document.getElementById('signUpBtn');
+        const messageBox = document.getElementById('messageBox');
+
+        // Check if user is already logged in
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in, redirect to invoices page
+                window.location.href = 'invoices.html';
+            }
+        });
+
+        signInBtn.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+
+            if (!email || !password) {
+                showMessage('Vul alstublieft zowel e-mail als wachtwoord in.', 'error');
+                return;
+            }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessage('Succesvol aangemeld!', 'success');
+                window.location.href = 'invoices.html'; // Redirect on successful login
+            } catch (error) {
+                console.error("Fout bij aanmelden:", error.code, error.message);
+                let errorMessage = 'Fout bij aanmelden. Controleer uw gegevens.';
+                if (error.code === 'auth/invalid-email') {
+                    errorMessage = 'Ongeldig e-mailadres.';
+                } else if (error.code === 'auth/user-disabled') {
+                    errorMessage = 'Deze gebruiker is uitgeschakeld.';
+                } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    errorMessage = 'Ongeldige combinatie van e-mail en wachtwoord.';
+                }
+                showMessage(errorMessage, 'error');
+            }
+        });
+
+        signUpBtn.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+
+            if (!email || !password) {
+                showMessage('Vul alstublieft zowel e-mail als wachtwoord in.', 'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showMessage('Wachtwoord moet minimaal 6 tekens lang zijn.', 'error');
+                return;
+            }
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showMessage('Account succesvol aangemaakt! U bent nu aangemeld.', 'success');
+                window.location.href = 'invoices.html'; // Redirect on successful registration
+            } catch (error) {
+                console.error("Fout bij registreren:", error.code, error.message);
+                let errorMessage = 'Fout bij registreren. Probeer opnieuw.';
+                if (error.code === 'auth/email-already-in-use') {
+                    errorMessage = 'Dit e-mailadres is al in gebruik.';
+                } else if (error.code === 'auth/weak-password') {
+                    errorMessage = 'Wachtwoord is te zwak.';
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = 'Ongeldig e-mailadres.';
+                }
+                showMessage(errorMessage, 'error');
+            }
+        });
+
+        function showMessage(message, type = 'info') {
+            messageBox.textContent = message;
+            messageBox.className = ''; // Clear existing classes
+            messageBox.classList.add(type);
+            messageBox.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
