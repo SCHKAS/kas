@@ -22,7 +22,7 @@
     <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase instances
@@ -32,12 +32,12 @@
         window.userId = null;
         window.isAuthReady = false;
 
-        // Make Firestore functions globally available
+        // Make Firestore functions globally available (though not all are strictly needed on index.html)
         window.collection = collection;
         window.addDoc = addDoc;
         window.onSnapshot = onSnapshot;
         window.doc = doc;
-        window.updateDoc = updateDoc; // This refers to the Firestore updateDoc
+        window.updateDoc = updateDoc;
         window.deleteDoc = deleteDoc;
         window.query = query;
         window.orderBy = orderBy;
@@ -47,17 +47,15 @@
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
             window.__app_id = appId;
 
-            let firebaseConfig = {};
-
-            // IMPORTANT: In a real application, you should load this configuration securely.
-            // For this example, it's hardcoded as provided.
-            firebaseConfig = {
-              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-              authDomain: "schkas-66d27.firebaseapp.com",
-              projectId: "schkas-66d27",
-              storageBucket: "schkas-66d27.firebasestorage.app",
-              messagingSenderId: "987453212703",
-              appId: "1:987453212703:web:dcee394027367b74df2d2a"
+            // Firebase configuration (updated with user-provided config)
+            let firebaseConfig = {
+                apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+                authDomain: "schkas-66d27.firebaseapp.com",
+                projectId: "schkas-66d27",
+                storageBucket: "schkas-66d27.firebasestorage.app",
+                messagingSenderId: "987453212703",
+                appId: "1:987453212703:web:dcee394027367b74df2d2a",
+                measurementId: "G-9M60TQGKJZ" // Added measurementId from user's config
             };
 
             if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
@@ -68,27 +66,18 @@
             window.db = getFirestore(window.firebaseApp);
             window.auth = getAuth(window.firebaseApp);
 
-            onAuthStateChanged(window.auth, async (user) => {
+            onAuthStateChanged(window.auth, (user) => {
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
+                    window.isAuthReady = true;
+                    // Display the user ID on the page
+                    document.getElementById('currentUserId').textContent = window.userId;
                 } else {
-                    try {
-                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                        if (__initial_auth_token) {
-                            await signInWithCustomToken(window.auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(window.auth);
-                        }
-                        window.userId = window.auth.currentUser.uid;
-                        console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
-                    } catch (error) {
-                        console.error("Fout tijdens anonieme aanmelding:", error);
-                    }
+                    // User is not signed in, redirect to auth.html
+                    console.log("Geen gebruiker gevonden, doorsturen naar auth.html.");
+                    window.location.href = 'auth.html';
                 }
-                window.isAuthReady = true;
-                // Display the user ID on the page
-                document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
             });
         };
 
@@ -111,9 +100,26 @@
             window.location.href = 'invoices.html';
         }
 
+        // Functie om af te melden
+        window.logoutUser = function() {
+            signOut(window.auth).then(() => {
+                console.log("Succesvol afgemeld.");
+                window.location.href = 'auth.html'; // Terug naar inlogpagina
+            }).catch((error) => {
+                console.error("Fout bij afmelden:", error);
+                // Hier zou je een custom melding kunnen tonen in plaats van alert
+                alert("Fout bij afmelden. Probeer opnieuw.");
+            });
+        }
+
         // Initialiseer Firebase bij het laden van de pagina
         window.onload = function() {
             window.initFirebase();
+            // Voeg event listener toe voor de afmeldknop, indien aanwezig
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', window.logoutUser);
+            }
         };
     </script>
     <style>
@@ -213,7 +219,7 @@
 <body>
     <div class="container">
         <div class="logo-container">
-            <img src="Black logo - no background.png" alt="Bedrijfslogo">
+            <img src="Black logo - no background.png" alt="Bedrijfslogo" onerror="this.onerror=null;this.src='https://placehold.co/200x200/000/fff?text=Logo+Niet+Gevonden';">
         </div>
         <h1>Financiële Tracker</h1>
         <div class="user-id-display">
@@ -246,7 +252,6 @@
                 </svg>
                 <span>Rapporten Exporteren</span>
             </button>
-            <!-- NIEUWE KNOP: Facturen opmaken -->
             <button onclick="navigateToInvoices()">
                 <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -256,6 +261,14 @@
                     <line x1="10" y1="9" x2="8" y2="9"></line>
                 </svg>
                 <span>Facturen Opmaken</span>
+            </button>
+            <button id="logoutBtn" class="bg-red-500 hover:bg-red-700">
+                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="17 16 22 12 17 8"></polyline>
+                    <line x1="22" y1="12" x2="10" y2="12"></line>
+                </svg>
+                <span>Afmelden</span>
             </button>
         </div>
     </div>
