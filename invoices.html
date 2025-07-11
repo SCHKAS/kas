@@ -579,8 +579,10 @@
             // Save to Firestore
             if (isAuthReady && userId) {
                 try {
-                    // Use the globally defined APP_ID
-                    const invoicesColRef = collection(db, `artifacts/${APP_ID}/users/${userId}/invoices`);
+                    // Use the globally defined APP_ID for public collection
+                    const invoicesColRef = collection(db, `artifacts/${APP_ID}/public/data/invoices`);
+                    // Add userId to the invoice data for tracking
+                    invoiceData.createdByUserId = userId;
                     await addDoc(invoicesColRef, invoiceData);
                     showMessageBox('Factuur succesvol opgeslagen!');
                     renderInvoice(invoiceData); // Display the generated invoice
@@ -616,8 +618,10 @@
 
             if (isAuthReady && userId) {
                 try {
-                    // Use the globally defined APP_ID
-                    const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, currentEditingInvoiceId);
+                    // Use the globally defined APP_ID for public collection
+                    const invoiceDocRef = doc(db, `artifacts/${APP_ID}/public/data/invoices`, currentEditingInvoiceId);
+                    // Update createdByUserId if it's missing (should ideally be set on creation)
+                    invoiceData.createdByUserId = userId;
                     await updateDoc(invoiceDocRef, invoiceData);
                     showMessageBox('Factuur succesvol bijgewerkt!');
                     renderInvoice(invoiceData); // Display the updated invoice
@@ -806,8 +810,8 @@
                 noInvoicesElement.classList.add('hidden'); // Hide "no invoices" initially
             }
 
-            // Use the globally defined APP_ID
-            const invoicesColRef = collection(db, `artifacts/${APP_ID}/users/${userId}/invoices`);
+            // Use the globally defined APP_ID for public collection
+            const invoicesColRef = collection(db, `artifacts/${APP_ID}/public/data/invoices`);
             const q = query(invoicesColRef, orderBy("invoiceDate", "desc")); // Order by date descending
 
             onSnapshot(q, (snapshot) => {
@@ -875,8 +879,8 @@
             }
 
             try {
-                // Use the globally defined APP_ID
-                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, invoiceId);
+                // Use the globally defined APP_ID for public collection
+                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/public/data/invoices`, invoiceId);
                 const invoiceSnap = await getDoc(invoiceDocRef);
 
                 if (invoiceSnap.exists()) {
@@ -904,8 +908,8 @@
             }
 
             try {
-                // Use the globally defined APP_ID
-                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, invoiceId);
+                // Use the globally defined APP_ID for public collection
+                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/public/data/invoices`, invoiceId);
                 const invoiceSnap = await getDoc(invoiceDocRef);
 
                 if (invoiceSnap.exists()) {
@@ -1000,8 +1004,8 @@
             }
 
             try {
-                // Use the globally defined APP_ID
-                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/users/${userId}/invoices`, invoiceId);
+                // Use the globally defined APP_ID for public collection
+                const invoiceDocRef = doc(db, `artifacts/${APP_ID}/public/data/invoices`, invoiceId);
                 await deleteDoc(invoiceDocRef);
                 showMessageBox('Factuur succesvol verwijderd!');
                 clearForm(); // Clear form if the deleted invoice was being edited
