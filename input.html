@@ -25,7 +25,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase instances
         window.firebaseApp = null;
@@ -33,7 +33,7 @@
         window.auth = null;
         window.userId = null;
         window.isAuthReady = false;
-        window.transactions = []; // Store transactions globally for consistency and editing purposes
+        window.transactions = []; // Store transactions globally
         window.isLoading = false; // Nieuwe globale variabele voor laadstatus
 
         // Make Firestore functions globally available
@@ -45,6 +45,8 @@
         window.deleteDoc = deleteDoc;
         window.query = query;
         window.orderBy = orderBy;
+        window.getDoc = getDoc; // Make getDoc globally available
+        window.writeBatch = writeBatch; // Make writeBatch globally available
 
         // Tone.js synth voor notificatiegeluid
         let synth;
@@ -67,51 +69,84 @@
 
         // Initialize Firebase and set up authentication
         window.initFirebase = async () => {
+            console.log("initFirebase gestart."); // Debug log
             // Updated app ID for this version to ensure data separation
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
-            window.__app_id = appId; // Make it globally accessible for Firestore paths
+            const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'finance-tracker-bulk-app';
+            window.APP_ID = APP_ID; // Make it globally accessible for Firestore paths
+            console.log(`App ID ingesteld: ${window.APP_ID}`); // Debug log
+
+            let firebaseConfig = {};
 
             // De Firebase configuratie is nu direct hieronder geplakt.
             // Deze is afkomstig van jouw Firebase project: schkas-66d27
-            let firebaseConfig = {
-                apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-                authDomain: "schkas-66d27.firebaseapp.com",
-                projectId: "schkas-66d27",
-                storageBucket: "schkas-66d27.firebasestorage.app",
-                messagingSenderId: "987453212703",
-                appId: "1:987453212703:web:dcee394027367b74df2d2a",
-                measurementId: "G-9M60TQGKJZ" // Added measurementId for consistency
+            firebaseConfig = {
+              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+              authDomain: "schkas-66d27.firebaseapp.com",
+              projectId: "schkas-66d27",
+              storageBucket: "schkas-66d27.firebasestorage.app",
+              messagingSenderId: "987453212703",
+              appId: "1:987453212703:web:dcee394027367b74df2d2a",
+              measurementId: "G-9M60TQGKJZ"
             };
 
             if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
                 console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken. Werk firebaseConfig bij met je echte Firebase projectgegevens.");
-                // We gaan door met initialisatie om de app niet volledig te breken,
-                // maar Firestore-bewerkingen zullen mislukken.
             }
 
             window.firebaseApp = initializeApp(firebaseConfig);
             window.db = getFirestore(window.firebaseApp);
             window.auth = getAuth(window.firebaseApp);
+            console.log("Firebase app, db, auth geïnitialiseerd."); // Debug log
 
             // Listen for authentication state changes
-            onAuthStateChanged(window.auth, (user) => {
+            onAuthStateChanged(window.auth, async (user) => {
+                console.log("onAuthStateChanged callback geactiveerd."); // Debug log
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
                     window.isAuthReady = true;
-                    // Zodra authenticatie klaar is, laad transacties
-                    loadTransactions(); // Still load to populate window.transactions for consistency
-                    document.getElementById('currentUserId').textContent = window.userId; // Display user ID
                 } else {
-                    // User is not signed in, redirect to auth.html
-                    console.log("Geen gebruiker gevonden, doorsturen naar auth.html.");
-                    window.location.href = 'auth.html';
+                    console.log("Geen gebruiker gevonden, doorsturen naar auth.html."); // Debug log
+                    window.location.href = 'auth.html'; // Redirect to login page
                 }
+                console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`); // Debug log
             });
         };
 
         // BTW-percentage (aanpasbaar)
         const VAT_RATE = 0.21; // 21%
+
+        // Categorieën voor inkomsten en uitgaven
+        const INCOME_CATEGORIES = {
+            'Behandelingen': [
+                'Suikerontharing', 'Laserontharing', 'Nagels', 'Manicure', 'Pedicure',
+                'Gelaatsverzorging', 'Massage', 'Wimpers/brows', 'Spraytan', 'Make up',
+                'LPG', 'Celestetic', 'Andere'
+            ],
+            'Verkoop': [
+                'Voorschotten', 'Biologique Recherche', 'I AM KLEAN', 'LPG',
+                'Atelier Rebul', 'Lash Extend', 'My Lamination', 'Pandhys', 'OPI',
+                'Abonnementen', 'Cadeaubon', 'Footlogix', 'Celestetic', 'Andere'
+            ]
+        };
+
+        const EXPENSE_CATEGORIES = {
+            'Lonen': ['Lonen'],
+            'Derden': ['Derden'],
+            'Huur': ['Huur'],
+            'Producten': ['Producten'],
+            'Nutsvoorziening': ['Nutsvoorziening'],
+            'Boekhouder': ['Boekhouder'],
+            'Verzekeringen': ['Verzekeringen'],
+            'Marketing': ['Marketing'],
+            'Software': ['Software'],
+            'Leasing': ['Leasing'],
+            'Afbetaling': ['Afbetaling'],
+            'Loonkost': ['Loonkost'],
+            'Sponsoring': ['Sponsoring'],
+            'BTW': ['BTW'],
+            'Andere': ['Andere']
+        };
 
         // Categorieën waarop BTW teruggevorderd kan worden voor uitgaven
         const RECOVERABLE_VAT_EXPENSE_CATEGORIES = [
@@ -121,224 +156,95 @@
             "Verzekeringen",
             "Marketing",
             "Software",
-            "Verbruiksartikelen"
+            "Verbruiksartikelen" // Assuming this is still relevant, though not explicitly in new list
         ];
 
-        // Definieer subcategorieën
-        const subcategoriesData = {
-            treatments: ["Suikerontharing", "Laserontharing", "Nagels", "Manicure", "Pedicure", "Gelaatsverzorging", "Massage", "Wimpers/brows", "Spraytan", "Make up", "LPG", "Andere"],
-            sales: ["Biologique Recherche", "I AM KLEAN", "LPG", "Atelier Rebul", "Lash Extend", "Lamination", "Pandhys", "OPI", "Abonnementen", "Cadeaubon", "Footlogix", "Andere"],
-            expenses: ["Lonen", "Derden", "Huur", "Producten", "Nutsvoorziening", "Boekhouder", "Verzekeringen", "Marketing", "Andere", "Software", "Leasing", "Afbetaling", "Loonkost", "Verbruiksartikelen"]
-        };
+        // Beperkte betalingsmethoden
+        const PAYMENT_METHODS = ['Cash', 'Payconiq/BC', 'Cadeaubon', 'Abonnement'];
 
-        // Definieer personen (voor Ingevoerd door)
-        const persons = ["Marlien", "Kimberly", "Yasmine", "Jade"];
+        // Opties voor 'Ingevoerd Door'
+        const PERSON_OPTIONS = ['Marlien', 'Kimberly', 'Yasmine', 'Jade'];
 
-        // Definieer transactietypes en inkomstencategorieën
-        const transactionTypes = [
-            { value: 'income', text: 'Inkomst' },
-            { value: 'expense', text: 'Uitgave' }
-        ];
+        // Functies voor het beheren van de UI
+        /**
+         * Update de categorie-opties in een select-element.
+         * @param {HTMLSelectElement} typeSelect - Het 'type' select-element (inkomsten/uitgaven).
+         * @param {HTMLSelectElement} categorySelect - Het 'categorie' select-element.
+         */
+        window.updateCategoriesForForm = function(typeSelect, categorySelect) {
+            const type = typeSelect.value;
+            categorySelect.innerHTML = '<option value="">Selecteer Categorie</option>';
 
-        const incomeCategories = [
-            { value: 'treatments', text: 'Behandelingen' },
-            { value: 'sales', text: 'Verkoop' }
-        ];
+            let categories = {};
+            if (type === 'income') {
+                categories = INCOME_CATEGORIES;
+            } else if (type === 'expense') {
+                categories = EXPENSE_CATEGORIES;
+            }
 
-        // Definieer betalingsopties
-        const paymentOptions = ["Cash", "Payconiq/BC", "Cadeaubon", "Abonnement"];
+            for (const cat in categories) {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                categorySelect.appendChild(option);
+            }
+        }
 
         /**
-         * Genereert en vult de kwartaalopties in het dropdownmenu.
-         * @param {HTMLElement} selectElement - Het select element om te vullen.
-         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
+         * Update de subcategorie-opties in een select-element en beheert de zichtbaarheid van afhankelijke velden.
+         * @param {HTMLSelectElement} typeSelect - Het 'type' select-element.
+         * @param {HTMLSelectElement} categorySelect - Het 'categorie' select-element.
+         * @param {HTMLSelectElement} subcategorySelect - Het 'subcategorie' select-element.
+         * @param {HTMLElement} paymentMethodGroup - De groep voor betalingsmethode.
+         * @param {HTMLElement} customerNameGroup - De groep voor klantnaam.
+         * @param {HTMLElement} productNameGroup - De groep voor productnaam.
+         * @param {HTMLElement} invoiceDateGroup - De groep voor factuurdatum.
          */
-        window.generateQuarterOptions = function(selectElement, defaultValue = null) {
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth();
-            const currentQuarter = Math.floor(currentMonth / 3) + 1; // 1-4
+        window.updateSubcategoriesForForm = function(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup) {
+            const type = typeSelect.value;
+            const category = categorySelect.value;
 
-            let optionsHtml = '';
-            // Genereer voor vorig jaar, huidig jaar en volgend jaar
-            for (let year = currentYear - 1; year <= currentYear + 1; year++) {
-                for (let q = 1; q <= 4; q++) {
-                    const quarterString = `${year} Q${q}`;
-                    optionsHtml += `<option value="${quarterString}">${quarterString}</option>`;
+            subcategorySelect.innerHTML = '<option value="">Selecteer Subcategorie</option>';
+
+            // Reset display states for conditional fields
+            paymentMethodGroup.style.display = 'none';
+            customerNameGroup.style.display = 'none';
+            productNameGroup.style.display = 'none';
+            invoiceDateGroup.style.display = 'none';
+
+            if (type === 'income') {
+                if (category && INCOME_CATEGORIES[category]) {
+                    INCOME_CATEGORIES[category].forEach(sub => {
+                        const option = document.createElement('option');
+                        option.value = sub;
+                        option.textContent = sub;
+                        subcategorySelect.appendChild(option);
+                    });
                 }
-            }
-            selectElement.innerHTML = optionsHtml;
+                paymentMethodGroup.style.display = 'block';
+                customerNameGroup.style.display = 'block';
 
-            // Stel standaard in op het huidige kwartaal of de opgegeven waarde
-            const defaultQuarterString = defaultValue || `${currentYear} Q${currentQuarter}`;
-            if (selectElement.querySelector(`option[value="${defaultQuarterString}"]`)) {
-                selectElement.value = defaultQuarterString;
-            }
-        }
-
-        /**
-         * Vult de dropdown met transactietypes.
-         * @param {HTMLElement} selectElement - Het select element om te vullen.
-         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
-         */
-        window.populateTransactionTypes = function(selectElement, defaultValue = null) {
-            let optionsHtml = '';
-            transactionTypes.forEach(type => {
-                optionsHtml += `<option value="${type.value}">${type.text}</option>`;
-            });
-            selectElement.innerHTML = optionsHtml;
-            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
-                selectElement.value = defaultValue;
-            }
-        }
-
-        /**
-         * Vult de dropdown met inkomstencategorieën.
-         * @param {HTMLElement} selectElement - Het select element om te vullen.
-         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
-         */
-        window.populateIncomeCategories = function(selectElement, defaultValue = null) {
-            let optionsHtml = '';
-            incomeCategories.forEach(category => {
-                optionsHtml += `<option value="${category.value}">${category.text}</option>`;
-            });
-            selectElement.innerHTML = optionsHtml;
-            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
-                selectElement.value = defaultValue;
-            }
-        }
-
-        /**
-         * Vult de dropdown met personen.
-         * @param {HTMLElement} selectElement - Het select element om te vullen.
-         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
-         */
-        window.populatePersons = function(selectElement, defaultValue = null) {
-            let optionsHtml = '';
-            persons.forEach(person => {
-                optionsHtml += `<option value="${person}">${person}</option>`;
-            });
-            selectElement.innerHTML = optionsHtml;
-            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
-                selectElement.value = defaultValue;
-            }
-        }
-
-        /**
-         * Vult de dropdown met betalingsopties.
-         * @param {HTMLElement} selectElement - Het select element om te vullen.
-         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
-         */
-        window.populatePaymentOptions = function(selectElement, defaultValue = null) {
-            let optionsHtml = '';
-            paymentOptions.forEach(option => {
-                optionsHtml += `<option value="${option}">${option}</option>`;
-            });
-            selectElement.innerHTML = optionsHtml;
-            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
-                selectElement.value = defaultValue;
-            }
-        }
-
-        /**
-         * Schakelt de zichtbaarheid van de inkomstencategorie-selectie en specifieke velden in of uit,
-         * en vult de subcategorieën op basis van de geselecteerde typen.
-         * @param {HTMLElement} [containerElement] - De container van de invoervelden (voor bulk invoer).
-         */
-        window.toggleCategory = function(containerElement = document) {
-            const typeSelect = containerElement.querySelector('[id^="typeSelect"]');
-            const incomeCategoryGroup = containerElement.querySelector('[id^="incomeCategoryGroup"]');
-            const subcategoryGroup = containerElement.querySelector('[id^="subcategoryGroup"]');
-            const subcategorySelect = containerElement.querySelector('[id^="subcategorySelect"]');
-            const customerNameGroup = containerElement.querySelector('[id^="customerNameGroup"]');
-            const productNameGroup = containerElement.querySelector('[id^="productNameGroup"]');
-            const invoiceDateGroup = containerElement.querySelector('[id^="invoiceDateGroup"]');
-            const remarksGroup = containerElement.querySelector('[id^="remarksGroup"]');
-            const incomeCategorySelect = containerElement.querySelector('[id^="incomeCategorySelect"]');
-
-
-            // Reset alle specifieke velden naar verborgen
-            if (customerNameGroup) customerNameGroup.style.display = 'none';
-            if (productNameGroup) productNameGroup.style.display = 'none';
-            if (invoiceDateGroup) invoiceDateGroup.style.display = 'none';
-            if (remarksGroup) remarksGroup.style.display = 'none';
-            if (subcategorySelect) subcategorySelect.innerHTML = ''; // Wis bestaande subcategorie opties
-
-            if (typeSelect && typeSelect.value === 'income') {
-                if (incomeCategoryGroup) incomeCategoryGroup.style.display = 'block';
-
-                const incomeCategory = incomeCategorySelect ? incomeCategorySelect.value : null;
-                if (incomeCategory === 'treatments') {
-                    if (customerNameGroup) customerNameGroup.style.display = 'block';
-                    if (subcategorySelect) populateSubcategories(subcategorySelect, 'treatments');
-                } else if (incomeCategory === 'sales') {
-                    if (productNameGroup) productNameGroup.style.display = 'block';
-                    if (subcategorySelect) populateSubcategories(subcategorySelect, 'sales');
+                // Specifieke logica voor 'Productnaam' bij 'Behandelingen'
+                if (category === 'Behandelingen') {
+                    productNameGroup.style.display = 'none'; // Verberg productnaam bij behandelingen
+                } else {
+                    productNameGroup.style.display = 'block'; // Toon productnaam voor andere inkomsten
                 }
-            } else { // typeSelect.value === 'expense'
-                if (incomeCategoryGroup) incomeCategoryGroup.style.display = 'none';
-                if (invoiceDateGroup) invoiceDateGroup.style.display = 'block';
-                if (remarksGroup) remarksGroup.style.display = 'block';
-                if (subcategorySelect) populateSubcategories(subcategorySelect, 'expenses');
-            }
-            if (subcategoryGroup) subcategoryGroup.style.display = 'block'; // Toon altijd subcategorie
-        }
-
-        /**
-         * Vult de subcategorie dropdown op basis van de geselecteerde hoofdcategorie.
-         * @param {HTMLElement} selectElement - Het select element om te vullen.
-         * @param {string} categoryKey - De sleutel van de categorie (bijv. 'treatments', 'sales', 'expenses').
-         * @param {string} [defaultValue] - De standaardwaarde die geselecteerd moet worden.
-         */
-        function populateSubcategories(selectElement, categoryKey, defaultValue = null) {
-            const options = subcategoriesData[categoryKey] || [];
-            let optionsHtml = '';
-            options.forEach(sub => {
-                optionsHtml += `<option value="${sub}">${sub}</option>`;
-            });
-            selectElement.innerHTML = optionsHtml;
-            if (defaultValue && selectElement.querySelector(`option[value="${defaultValue}"]`)) {
-                selectElement.value = defaultValue;
+            } else if (type === 'expense') {
+                if (category && EXPENSE_CATEGORIES[category]) {
+                    EXPENSE_CATEGORIES[category].forEach(sub => {
+                        const option = document.createElement('option');
+                        option.value = sub;
+                        option.textContent = sub;
+                        subcategorySelect.appendChild(option);
+                    });
+                }
+                invoiceDateGroup.style.display = 'block';
             }
         }
 
         /**
-         * Werkt de achtergrondkleur van de type select dropdown bij.
-         * @param {HTMLElement} [selectElement] - Het select element om de kleur van aan te passen.
-         */
-        window.updateTypeColor = function(selectElement) {
-            if (!selectElement) return;
-            selectElement.classList.remove('bg-income', 'bg-expense');
-            if (selectElement.value === 'income') {
-                selectElement.classList.add('bg-income');
-            } else {
-                selectElement.classList.add('bg-expense');
-            }
-        }
-
-        /**
-         * Werkt de achtergrondkleur van de inkomstencategorie select dropdown bij.
-         * @param {HTMLElement} [selectElement] - Het select element om de kleur van aan te passen.
-         */
-        window.updateIncomeCategoryColor = function(selectElement) {
-            if (!selectElement) return;
-            selectElement.classList.remove('bg-treatments', 'bg-sales');
-            if (selectElement.value === 'treatments') {
-                selectElement.classList.add('bg-treatments');
-            } else if (selectElement.value === 'sales') {
-                selectElement.classList.add('bg-sales');
-            }
-        }
-
-        /**
-         * Navigeert terug naar de landingspagina.
-         */
-        window.navigateToHome = function() { // Added window. to make it globally accessible
-            // Nu relatief aan de <base> href
-            window.location.href = 'index.html';
-        }
-
-        /**
-         * Toon/verberg de laadindicator.
+         * Toont/verbergt de laadindicator.
          * @param {boolean} show - True om te tonen, false om te verbergen.
          */
         function showLoadingIndicator(show) {
@@ -347,267 +253,335 @@
                 indicator.style.display = show ? 'flex' : 'none';
             }
             window.isLoading = show;
+            console.log(`Laadindicator: ${show ? 'getoond' : 'verborgen'}`); // Debug log
         }
 
         /**
-         * Voegt een nieuwe rij toe voor bulktransactie-invoer.
-         * @param {object} [transaction] - Optioneel transactieobject om de rij mee te vullen (voor bewerken).
+         * Haalt de formuliergegevens op en valideert deze voor een specifiek transactieformulier.
+         * @param {HTMLElement} formElement - Het root-element van het transactieformulier.
+         * @returns {object} Een object met isValid (boolean) en data (object) of message (string).
          */
-        window.addBulkTransactionRow = function(transaction = null) {
-            const container = document.getElementById('bulkTransactionContainer');
-            const newRow = document.createElement('div');
-            newRow.className = 'bulk-transaction-row';
-            // Use transaction ID if editing, otherwise generate a temporary unique ID for new rows
-            const rowId = transaction ? transaction.id : `bulkRow_${Date.now()}`;
+        function getFormData(formElement) {
+            const typeEl = formElement.querySelector('.transaction-type-select');
+            const categoryEl = formElement.querySelector('.transaction-category-select');
+            const subcategoryEl = formElement.querySelector('.transaction-subcategory-select');
+            const amountEl = formElement.querySelector('.transaction-amount-input');
+            const paymentMethodEl = formElement.querySelector('.transaction-payment-method-select');
+            const customerNameEl = formElement.querySelector('.transaction-customer-name-input');
+            const productNameEl = formElement.querySelector('.transaction-product-name-input');
+            const invoiceDateEl = formElement.querySelector('.transaction-invoice-date-input');
+            const remarksEl = formElement.querySelector('.transaction-remarks-input');
+            const personEl = formElement.querySelector('.transaction-person-select'); // Aangepast naar select
+            const quarterEl = formElement.querySelector('.transaction-quarter-input');
 
-            newRow.innerHTML = `
-                <button class="remove-row-btn" onclick="removeBulkTransactionRow(this)">X</button>
-                <div class="input-group">
-                    <label for="quarterSelect_${rowId}">Kwartaal:</label>
-                    <select id="quarterSelect_${rowId}"></select>
+            const type = typeEl.value;
+            const category = categoryEl.value;
+            const subcategory = subcategoryEl.value;
+            const amount = parseFloat(amountEl.value);
+            const paymentMethod = paymentMethodEl.value;
+            const customerName = customerNameEl.value;
+            const productName = productNameEl.value;
+            const invoiceDate = invoiceDateEl.value;
+            const remarks = remarksEl.value;
+            const person = personEl.value;
+            const quarter = quarterEl.value;
+            const timestamp = new Date().toISOString(); // Altijd de huidige tijd voor sortering
+
+            // Basisvalidatie
+            if (!type || !category || !subcategory || isNaN(amount) || amount <= 0 || !person || !quarter) {
+                return { isValid: false, message: 'Vul alstublieft alle verplichte velden in (Type, Categorie, Subcategorie, Bedrag, Persoon, Kwartaal) en zorg voor een positief bedrag.' };
+            }
+
+            if (type === 'income') {
+                if (!paymentMethod || !customerName) {
+                    return { isValid: false, message: 'Voor inkomsten zijn Betalingsmethode en Klantnaam verplicht.' };
+                }
+                // Productnaam is alleen verplicht als het geen 'Behandelingen' is
+                if (category !== 'Behandelingen' && !productName) {
+                    return { isValid: false, message: 'Voor inkomsten (niet-behandelingen) is Productnaam verplicht.' };
+                }
+            }
+
+            if (type === 'expense' && !invoiceDate) {
+                return { isValid: false, message: 'Voor uitgaven is de Factuurdatum verplicht.' };
+            }
+
+            return {
+                isValid: true,
+                data: {
+                    type,
+                    category,
+                    subcategory,
+                    amount,
+                    paymentMethod: type === 'income' ? paymentMethod : '', // Alleen voor inkomsten
+                    customerName: type === 'income' ? customerName : '', // Alleen voor inkomsten
+                    productName: (type === 'income' && category !== 'Behandelingen') ? productName : '', // Alleen voor inkomsten (niet behandelingen)
+                    invoiceDate: type === 'expense' ? invoiceDate : '', // Alleen voor uitgaven
+                    remarks,
+                    person,
+                    quarter,
+                    timestamp
+                }
+            };
+        }
+
+        /**
+         * Maakt alle dynamische formulieren leeg en reset de UI naar de initiële staat.
+         */
+        window.clearForm = function() {
+            const dynamicTransactionFormsContainer = document.getElementById('dynamicTransactionFormsContainer');
+            dynamicTransactionFormsContainer.innerHTML = ''; // Clear all existing forms
+            transactionFormCounter = 0; // Reset counter for new forms
+            addTransactionForm(); // Add one default empty form
+        }
+
+        let transactionFormCounter = 0; // Counter for unique IDs of dynamic transaction forms
+
+        /**
+         * Voegt een nieuw leeg transactieformulier toe aan de dynamische lijst.
+         * @param {object} [initialData={}] - Optionele initiële data om het formulier mee te vullen.
+         */
+        window.addTransactionForm = function(initialData = {}) {
+            transactionFormCounter++;
+            const container = document.getElementById('dynamicTransactionFormsContainer');
+            const formId = `transactionForm_${transactionFormCounter}`;
+            const newFormDiv = document.createElement('div');
+            newFormDiv.classList.add('transaction-form-item', 'bg-blue-50', 'p-4', 'rounded-lg', 'shadow-sm', 'mb-4');
+            newFormDiv.id = formId;
+
+            let paymentMethodOptions = PAYMENT_METHODS.map(method => `<option value="${method}">${method}</option>`).join('');
+            let personOptions = PERSON_OPTIONS.map(person => `<option value="${person}">${person}</option>`).join('');
+
+            newFormDiv.innerHTML = `
+                <h3 class="text-lg font-semibold mb-3 text-blue-700">Transactie #${transactionFormCounter}</h3>
+                <div class="form-group">
+                    <label for="type_${formId}">Type Transactie:</label>
+                    <select id="type_${formId}" class="transaction-type-select w-full p-2 border rounded-md" required>
+                        <option value="">Selecteer Type</option>
+                        <option value="income">Inkomst</option>
+                        <option value="expense">Uitgave</option>
+                    </select>
                 </div>
-                <div class="input-group">
-                    <label for="typeSelect_${rowId}">Type Transactie:</label>
-                    <select id="typeSelect_${rowId}" onchange="toggleCategory(this.closest('.bulk-transaction-row')); updateTypeColor(this)"></select>
+                <div class="form-group">
+                    <label for="category_${formId}">Categorie:</label>
+                    <select id="category_${formId}" class="transaction-category-select w-full p-2 border rounded-md" required>
+                        <option value="">Selecteer Categorie</option>
+                    </select>
                 </div>
-                <div class="input-group" id="incomeCategoryGroup_${rowId}">
-                    <label for="incomeCategorySelect_${rowId}">Inkomst Categorie:</label>
-                    <select id="incomeCategorySelect_${rowId}" onchange="toggleCategory(this.closest('.bulk-transaction-row'); updateIncomeCategoryColor(this)"></select>
+                <div class="form-group">
+                    <label for="subcategory_${formId}">Subcategorie:</label>
+                    <select id="subcategory_${formId}" class="transaction-subcategory-select w-full p-2 border rounded-md" required>
+                        <option value="">Selecteer Subcategorie</option>
+                    </select>
                 </div>
-                <div class="input-group" id="subcategoryGroup_${rowId}">
-                    <label for="subcategorySelect_${rowId}">Subcategorie:</label>
-                    <select id="subcategorySelect_${rowId}"></select>
+                <div class="form-group">
+                    <label for="amount_${formId}">Bedrag (€):</label>
+                    <input type="number" id="amount_${formId}" class="transaction-amount-input w-full p-2 border rounded-md" step="0.01" placeholder="0.00" required>
                 </div>
-                <div class="input-group" id="customerNameGroup_${rowId}" style="display:none;">
-                    <label for="customerNameInput_${rowId}">Klantnaam:</label>
-                    <input type="text" id="customerNameInput_${rowId}" placeholder="Naam van de klant">
+
+                <div class="form-group conditional-field" id="paymentMethodGroup_${formId}" style="display: none;">
+                    <label for="paymentMethod_${formId}">Betalingsmethode:</label>
+                    <select id="paymentMethod_${formId}" class="transaction-payment-method-select w-full p-2 border rounded-md">
+                        <option value="">Selecteer Methode</option>
+                        ${paymentMethodOptions}
+                    </select>
                 </div>
-                <div class="input-group" id="productNameGroup_${rowId}" style="display:none;">
-                    <label for="productNameInput_${rowId}">Productnaam:</label>
-                    <input type="text" id="productNameInput_${rowId}" placeholder="Naam van het product">
+                <div class="form-group conditional-field" id="customerNameGroup_${formId}" style="display: none;">
+                    <label for="customerName_${formId}">Klantnaam:</label>
+                    <input type="text" id="customerName_${formId}" class="transaction-customer-name-input w-full p-2 border rounded-md" placeholder="Naam van de klant">
                 </div>
-                <div class="input-group">
-                    <label for="paymentMethodSelect_${rowId}">Betaling:</label>
-                    <select id="paymentMethodSelect_${rowId}"></select>
+                <div class="form-group conditional-field" id="productNameGroup_${formId}" style="display: none;">
+                    <label for="productName_${formId}">Productnaam:</label>
+                    <input type="text" id="productName_${formId}" class="transaction-product-name-input w-full p-2 border rounded-md" placeholder="Naam van het product">
                 </div>
-                <div class="input-group">
-                    <label for="amountInput_${rowId}">Bedrag (€):</label>
-                    <input type="number" id="amountInput_${rowId}" placeholder="0.00" step="0.01">
-                    <p id="amountError_${rowId}" class="error-message">Voer een geldig bedrag in.</p>
+                <div class="form-group conditional-field" id="invoiceDateGroup_${formId}" style="display: none;">
+                    <label for="invoiceDate_${formId}">Factuurdatum:</label>
+                    <input type="date" id="invoiceDate_${formId}" class="transaction-invoice-date-input w-full p-2 border rounded-md">
                 </div>
-                <div class="input-group" id="invoiceDateGroup_${rowId}" style="display:none;">
-                    <label for="invoiceDateInput_${rowId}">Factuurdatum:</label>
-                    <input type="date" id="invoiceDateInput_${rowId}">
+
+                <div class="form-group">
+                    <label for="remarks_${formId}">Opmerkingen:</label>
+                    <textarea id="remarks_${formId}" class="transaction-remarks-input w-full p-2 border rounded-md" placeholder="Eventuele opmerkingen"></textarea>
                 </div>
-                <div class="input-group">
-                    <label for="remarksInput_${rowId}">Opmerkingen:</label>
-                    <textarea id="remarksInput_${rowId}" placeholder="Eventuele opmerkingen"></textarea>
+                <div class="form-group">
+                    <label for="person_${formId}">Ingevoerd Door (Naam):</label>
+                    <select id="person_${formId}" class="transaction-person-select w-full p-2 border rounded-md" required>
+                        <option value="">Selecteer Persoon</option>
+                        ${personOptions}
+                    </select>
                 </div>
-                <div class="input-group">
-                    <label for="personInput_${rowId}">Ingevoerd door:</label>
-                    <select id="personInput_${rowId}"></select>
+                <div class="form-group">
+                    <label for="quarter_${formId}">Kwartaal (bijv. 2023 Q4):</label>
+                    <input type="text" id="quarter_${formId}" class="transaction-quarter-input w-full p-2 border rounded-md" placeholder="JJJJ QX" required>
                 </div>
-                <input type="hidden" id="transactionIdToEdit_${rowId}" value="${transaction ? transaction.id : ''}">
+                <button type="button" class="remove-transaction-form-btn bg-red-500 hover:bg-red-700 text-white px-3 py-1 rounded-md mt-2">Verwijderen</button>
             `;
-            container.appendChild(newRow);
+            container.appendChild(newFormDiv);
 
-            // Get references to the elements in the new row
-            const quarterSelect = newRow.querySelector(`[id^="quarterSelect_"]`);
-            const typeSelect = newRow.querySelector(`[id^="typeSelect_"]`);
-            const incomeCategorySelect = newRow.querySelector(`[id^="incomeCategorySelect_"]`);
-            const subcategorySelect = newRow.querySelector(`[id^="subcategorySelect_"]`);
-            const paymentMethodSelect = newRow.querySelector(`[id^="paymentMethodSelect_"]`);
-            const amountInput = newRow.querySelector(`[id^="amountInput_"]`);
-            const personInput = newRow.querySelector(`[id^="personInput_"]`);
-            const customerNameInput = newRow.querySelector(`[id^="customerNameInput_"]`);
-            const productNameInput = newRow.querySelector(`[id^="productNameInput_"]`);
-            const invoiceDateInput = newRow.querySelector(`[id^="invoiceDateInput_"]`);
-            const remarksInput = newRow.querySelector(`[id^="remarksInput_"]`);
-
-            // Populate dropdowns for the new row
-            window.generateQuarterOptions(quarterSelect, transaction ? transaction.quarter : null);
-            window.populateTransactionTypes(typeSelect, transaction ? transaction.type : null);
-            window.populateIncomeCategories(incomeCategorySelect, transaction ? transaction.category : null);
-            window.populatePersons(personInput, transaction ? transaction.person : null);
-            window.populatePaymentOptions(paymentMethodSelect, transaction ? transaction.paymentMethod : null);
-
-            // Set other fields and toggle visibility based on transaction data
-            if (transaction) {
-                amountInput.value = transaction.amount;
-                if (transaction.type === 'income') {
-                    if (transaction.category === 'treatments') {
-                        customerNameInput.value = transaction.customerName || '';
-                    } else if (transaction.category === 'sales') {
-                        productNameInput.value = transaction.productName || '';
-                    }
-                } else { // expense
-                    invoiceDateInput.value = transaction.invoiceDate || '';
-                    remarksInput.value = transaction.remarks || '';
-                }
+            // Populate with initial data if provided
+            if (Object.keys(initialData).length > 0) {
+                newFormDiv.querySelector(`#type_${formId}`).value = initialData.type || '';
+                window.updateCategoriesForForm(
+                    newFormDiv.querySelector(`#type_${formId}`),
+                    newFormDiv.querySelector(`#category_${formId}`)
+                );
+                newFormDiv.querySelector(`#category_${formId}`).value = initialData.category || '';
+                window.updateSubcategoriesForForm(
+                    newFormDiv.querySelector(`#type_${formId}`),
+                    newFormDiv.querySelector(`#category_${formId}`),
+                    newFormDiv.querySelector(`#subcategory_${formId}`),
+                    newFormDiv.querySelector(`#paymentMethodGroup_${formId}`),
+                    newFormDiv.querySelector(`#customerNameGroup_${formId}`),
+                    newFormDiv.querySelector(`#productNameGroup_${formId}`),
+                    newFormDiv.querySelector(`#invoiceDateGroup_${formId}`)
+                );
+                newFormDiv.querySelector(`#subcategory_${formId}`).value = initialData.subcategory || '';
+                newFormDiv.querySelector(`#amount_${formId}`).value = initialData.amount || '';
+                newFormDiv.querySelector(`#paymentMethod_${formId}`).value = initialData.paymentMethod || '';
+                newFormDiv.querySelector(`#customerName_${formId}`).value = initialData.customerName || '';
+                newFormDiv.querySelector(`#productName_${formId}`).value = initialData.productName || '';
+                newFormDiv.querySelector(`#invoiceDate_${formId}`).value = initialData.invoiceDate || '';
+                newFormDiv.querySelector(`#remarks_${formId}`).value = initialData.remarks || '';
+                newFormDiv.querySelector(`#person_${formId}`).value = initialData.person || '';
+                newFormDiv.querySelector(`#quarter_${formId}`).value = initialData.quarter || getDefaultQuarter();
+            } else {
+                // Set default quarter for new empty forms
+                newFormDiv.querySelector(`#quarter_${formId}`).value = getDefaultQuarter();
             }
 
-            window.toggleCategory(newRow); // Initialize visibility and subcategories for the new row
-            if (transaction) {
-                // After toggleCategory, populate subcategory with specific value
-                populateSubcategories(subcategorySelect, transaction.type === 'income' ? transaction.category : 'expenses', transaction.subcategory);
-            }
-            window.updateTypeColor(typeSelect);
-            window.updateIncomeCategoryColor(incomeCategorySelect);
+
+            // Attach event listeners for the new form
+            const typeSelect = newFormDiv.querySelector(`#type_${formId}`);
+            const categorySelect = newFormDiv.querySelector(`#category_${formId}`);
+            const subcategorySelect = newFormDiv.querySelector(`#subcategory_${formId}`);
+            const paymentMethodGroup = newFormDiv.querySelector(`#paymentMethodGroup_${formId}`);
+            const customerNameGroup = newFormDiv.querySelector(`#customerNameGroup_${formId}`);
+            const productNameGroup = newFormDiv.querySelector(`#productNameGroup_${formId}`);
+            const invoiceDateGroup = newFormDiv.querySelector(`#invoiceDateGroup_${formId}`);
+
+            typeSelect.addEventListener('change', () => {
+                window.updateCategoriesForForm(typeSelect, categorySelect);
+                window.updateSubcategoriesForForm(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup);
+            });
+            categorySelect.addEventListener('change', () => {
+                window.updateSubcategoriesForForm(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup);
+            });
+
+            newFormDiv.querySelector('.remove-transaction-form-btn').addEventListener('click', (event) => {
+                removeTransactionForm(event.target.closest('.transaction-form-item'));
+            });
+
+            // Initial population for the newly added form
+            window.updateCategoriesForForm(typeSelect, categorySelect);
+            window.updateSubcategoriesForForm(typeSelect, categorySelect, subcategorySelect, paymentMethodGroup, customerNameGroup, productNameGroup, invoiceDateGroup);
         }
 
         /**
-         * Verwijdert een bulktransactie-rij.
-         * @param {HTMLElement} button - De verwijderknop die is geklikt.
+         * Verwijdert een dynamisch toegevoegd transactieformulier.
+         * @param {HTMLElement} formElement - Het formulier-element dat verwijderd moet worden.
          */
-        window.removeBulkTransactionRow = function(button) {
-            button.closest('.bulk-transaction-row').remove();
-        }
-
-        /**
-         * Handelt het toevoegen van meerdere transacties vanuit de bulk-invoer.
-         */
-        window.handleBulkTransactions = async function() {
-            showLoadingIndicator(true); // Toon laadindicator
-            try {
-                const bulkRows = document.querySelectorAll('.bulk-transaction-row');
-                const transactionsToSave = [];
-                let hasErrors = false;
-
-                if (!window.db) {
-                    console.error("Firestore is niet geïnitialiseerd.");
-                    showLoadingIndicator(false); // Verberg laadindicator bij fout
-                    return;
-                }
-
-                for (const row of bulkRows) {
-                    const rowIdElement = row.querySelector('[id^="transactionIdToEdit_"]');
-                    const rowId = rowIdElement ? rowIdElement.value : null; // Get the ID, if it exists
-
-                    const quarter = row.querySelector('[id^="quarterSelect_"]').value;
-                    const type = row.querySelector('[id^="typeSelect_"]').value;
-                    const incomeCategorySelect = row.querySelector('[id^="incomeCategorySelect_"]');
-                    const subcategory = row.querySelector('[id^="subcategorySelect_"]').value;
-                    const paymentMethod = row.querySelector('[id^="paymentMethodSelect_"]').value;
-                    const amountInput = row.querySelector('[id^="amountInput_"]');
-                    const person = row.querySelector('[id^="personInput_"]').value;
-                    const customerNameInput = row.querySelector('[id^="customerNameInput_"]');
-                    const productNameInput = row.querySelector('[id^="productNameInput_"]');
-                    const invoiceDateInput = row.querySelector('[id^="invoiceDateInput_"]');
-                    const remarksInput = row.querySelector('[id^="remarksInput_"]');
-                    const amountError = row.querySelector('[id^="amountError_"]');
-
-                    const amount = parseFloat(amountInput.value);
-
-                    if (isNaN(amount) || amount <= 0) {
-                        amountError.style.display = 'block';
-                        hasErrors = true;
-                        continue; // Skip to next row if amount is invalid
-                    } else {
-                        amountError.style.display = 'none';
-                    }
-
-                    let transactionData = {
-                        quarter: quarter,
-                        type: type,
-                        paymentMethod: paymentMethod,
-                        amount: amount,
-                        timestamp: new Date().toISOString(), // Automatisch gegenereerde datum
-                        person: person,
-                        subcategory: subcategory
-                    };
-
-                    if (type === 'income') {
-                        transactionData.category = incomeCategorySelect.value;
-                        if (incomeCategorySelect.value === 'treatments') {
-                            transactionData.customerName = customerNameInput.value.trim();
-                        } else if (incomeCategorySelect.value === 'sales') {
-                            transactionData.productName = productNameInput.value.trim();
-                        }
-                    } else { // expense
-                        transactionData.category = 'N.v.t.';
-                        transactionData.invoiceDate = invoiceDateInput.value;
-                        transactionData.remarks = remarksInput.value.trim();
-                    }
-                    transactionsToSave.push({ id: rowId, data: transactionData });
-                }
-
-                if (hasErrors) {
-                    console.error("Sommige bulktransacties bevatten fouten. Controleer de gemarkeerde velden.");
-                    showLoadingIndicator(false); // Verberg laadindicator bij fout
-                    return;
-                }
-                if (transactionsToSave.length === 0) {
-                    console.warn("Geen transacties om toe te voegen.");
-                    showLoadingIndicator(false); // Verberg laadindicator als er niets te doen is
-                    return;
-                }
-
-                const transactionsCollection = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
-                const promises = transactionsToSave.map(item => {
-                    if (item.id && !item.id.startsWith('bulkRow_')) {
-                        const transactionRef = window.doc(window.db, `artifacts/${window.__app_id}/public/data/transactions`, item.id);
-                        return window.updateDoc(transactionRef, item.data);
-                    } else {
-                        return window.addDoc(transactionsCollection, item.data);
-                    }
-                });
-                await Promise.all(promises);
-                console.log(`${transactionsToSave.length} transacties succesvol toegevoegd/bijgewerkt.`);
-                window.playPingSound(); // Speel geluid na succesvolle invoer
-
-                // Clear all bulk input rows after successful submission and add one new empty row
-                document.getElementById('bulkTransactionContainer').innerHTML = '';
-                window.addBulkTransactionRow(); // Add an empty row for new input
-
-            } catch (e) {
-                console.error("Fout bij het toevoegen/bijwerken van bulktransacties:", e);
-            } finally {
-                showLoadingIndicator(false); // Verberg laadindicator altijd aan het einde
+        function removeTransactionForm(formElement) {
+            if (document.querySelectorAll('.transaction-form-item').length > 1) {
+                formElement.remove();
+            } else {
+                showMessageBox('U moet minstens één transactieformulier hebben.');
             }
         }
 
+        /**
+         * Haalt het standaard kwartaal op (bijv. 2023 Q4).
+         * @returns {string} Het huidige kwartaal.
+         */
+        function getDefaultQuarter() {
+            const now = new Date();
+            const month = now.getMonth();
+            const year = now.getFullYear();
+            let quarter;
+            if (month >= 0 && month <= 2) quarter = `${year} Q1`;
+            else if (month >= 3 && month <= 5) quarter = `${year} Q2`;
+            else if (month >= 6 && month <= 8) quarter = `${year} Q3`;
+            else quarter = `${year} Q4`;
+            return quarter;
+        }
 
         /**
-         * Laadt transacties van Firestore en luistert naar real-time updates.
-         * Op deze pagina wordt alleen de data geladen, niet weergegeven.
+         * Slaat alle transacties op die in de dynamische formulieren zijn ingevoerd.
          */
-        window.loadTransactions = function() {
-            showLoadingIndicator(true); // Toon laadindicator
-            if (!window.db || !window.userId) { // Ensure userId is available
-                console.error("Firestore of User ID is niet geïnitialiseerd. Kan transacties niet laden.");
-                showLoadingIndicator(false); // Verberg laadindicator bij fout
+        window.saveAllTransactions = async function() {
+            const transactionForms = document.querySelectorAll('.transaction-form-item');
+            const transactionsToSave = [];
+            const errors = [];
+
+            transactionForms.forEach((formElement, index) => {
+                const result = getFormData(formElement); // Pass the form element directly
+
+                if (result.isValid) {
+                    transactionsToSave.push({ ...result.data, createdByUserId: window.userId });
+                } else {
+                    errors.push(`Transactie ${index + 1}: ${result.message}`);
+                }
+            });
+
+            if (errors.length > 0) {
+                showMessageBox('Fouten gevonden in transacties:\n' + errors.join('\n'));
                 return;
             }
 
-            const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.__app_id}/public/data/transactions`);
-            window.onSnapshot(window.query(transactionsCollectionRef, window.orderBy('timestamp', 'desc')), (snapshot) => {
-                window.transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                console.log("Transacties geladen/bijgewerkt:", window.transactions);
+            if (transactionsToSave.length === 0) {
+                showMessageBox('Geen geldige transacties gevonden om op te slaan.');
+                return;
+            }
 
-                const urlParams = new URLSearchParams(window.location.search);
-                const editId = urlParams.get('editId');
+            showLoadingIndicator(true);
+            try {
+                const transactionsCollectionRef = window.collection(window.db, `artifacts/${window.APP_ID}/public/data/transactions`);
+                const batch = window.writeBatch(window.db); // Maak een nieuwe batch aan
 
-                if (editId && window.transactions.length > 0) {
-                    const transactionToEdit = window.transactions.find(t => t.id === editId);
-                    if (transactionToEdit) {
-                        // Clear existing rows and add the one to edit
-                        document.getElementById('bulkTransactionContainer').innerHTML = '';
-                        window.addBulkTransactionRow(transactionToEdit);
-                        // Remove the editId from the URL after loading
-                        history.replaceState({}, document.title, window.location.pathname);
-                    } else {
-                        console.warn(`Transactie met ID ${editId} niet gevonden.`);
-                        window.addBulkTransactionRow(); // Add a default empty row
-                    }
-                } else if (document.querySelectorAll('.bulk-transaction-row').length === 0) {
-                    // Only add a default row if no rows exist (e.g., on initial load without editId)
-                    window.addBulkTransactionRow();
+                for (const transaction of transactionsToSave) {
+                    const newDocRef = window.doc(transactionsCollectionRef); // Genereer een nieuwe doc referentie
+                    batch.set(newDocRef, transaction); // Voeg de set-operatie toe aan de batch
                 }
-                showLoadingIndicator(false); // Verberg laadindicator na het laden
-            }, (error) => {
-                console.error("Fout bij laden transacties (onSnapshot error callback):", error);
-                showLoadingIndicator(false); // Verberg laadindicator bij fout
-            });
+
+                await batch.commit(); // Commit de batch
+
+                showMessageBox(`${transactionsToSave.length} transacties succesvol opgeslagen.`);
+                window.playPingSound();
+                clearForm(); // Leeg alle formulieren na opslaan
+            } catch (e) {
+                console.error("Fout bij het opslaan van alle transacties:", e);
+                showMessageBox('Fout bij het opslaan van alle transacties. Probeer opnieuw.');
+            } finally {
+                showLoadingIndicator(false);
+            }
+        }
+
+
+        // Custom message box function (replaces alert() and confirm())
+        function showMessageBox(message) {
+            const messageBox = document.createElement('div');
+            messageBox.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background-color: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                z-index: 1000;
+                text-align: center;
+                max-width: 300px;
+                border: 1px solid #ccc;
+            `;
+            messageBox.innerHTML = `
+                <p>${message}</p>
+                <button style="margin-top: 15px; padding: 8px 15px; background-color: #63b3ed; color: white; border: none; border-radius: 5px; cursor: pointer;">OK</button>
+            `;
+            document.body.appendChild(messageBox);
+
+            messageBox.querySelector('button').onclick = () => {
+                document.body.removeChild(messageBox);
+            };
         }
 
         // Functie om af te melden
@@ -617,20 +591,25 @@
                 window.location.href = 'auth.html'; // Terug naar inlogpagina
             }).catch((error) => {
                 console.error("Fout bij afmelden:", error);
-                // Hier zou je een custom melding kunnen tonen in plaats van alert
-                alert("Fout bij afmelden. Probeer opnieuw.");
+                showMessageBox("Fout bij afmelden. Probeer opnieuw.");
             });
         }
 
-        // Initialiseer Firebase en audio bij het laden van de pagina
+        // Initialiseer de app bij het laden van de pagina
         window.onload = function() {
+            console.log("Window onload geactiveerd."); // Debug log
             window.initFirebase();
             window.initAudio();
-            // Voeg event listener toe voor de afmeldknop
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn) {
-                logoutBtn.addEventListener('click', window.logoutUser);
-            }
+
+            // Event listeners voor de nieuwe bulk functionaliteit
+            document.getElementById('addTransactionFormBtn').addEventListener('click', () => addTransactionForm());
+            document.getElementById('saveAllTransactionsBtn').addEventListener('click', window.saveAllTransactions);
+            document.getElementById('clearFormBtn').addEventListener('click', window.clearForm); // Clear all dynamic forms
+            document.getElementById('backToMainBtn').addEventListener('click', () => window.location.href = 'index.html');
+            document.getElementById('logoutBtn').addEventListener('click', window.logoutUser);
+
+            // Voeg standaard één leeg transactieformulier toe voor bulk input
+            addTransactionForm();
         };
     </script>
     <style>
@@ -645,43 +624,23 @@
             margin: 0;
             padding: 20px;
             box-sizing: border-box;
-            flex-direction: column;
         }
         .container {
             background-color: #ffffff;
             padding: 30px;
             border-radius: 15px;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            max-width: 900px;
+            max-width: 700px;
             width: 100%;
             text-align: center;
-            margin-bottom: 20px;
             position: relative; /* Voor de laadindicator */
-        }
-        .header-container {
-            display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .header-container .logo-small {
-            max-width: 80px;
-            height: auto;
-            margin-right: 20px;
-            border-radius: 8px;
         }
         h1 {
             color: #2c5282;
+            margin-bottom: 20px;
             font-size: 2.2rem;
-            flex-grow: 1;
-            text-align: center;
         }
-        h2 {
-            font-size: 1.8rem;
-            margin-top: 30px;
-            text-align: center;
-            color: #2c5282;
-        }
-        .input-group {
+        .form-group {
             margin-bottom: 15px;
             text-align: left;
         }
@@ -704,7 +663,7 @@
             font-size: 1rem;
         }
         textarea {
-            min-height: 60px;
+            min-height: 80px;
             resize: vertical;
         }
         button {
@@ -728,19 +687,7 @@
             justify-content: center;
             gap: 15px;
             margin-top: 25px;
-            flex-wrap: wrap;
-        }
-        .user-id-display {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.9rem;
-            color: #718096;
-        }
-        .error-message {
-            color: #e53e3e;
-            font-size: 0.85rem;
-            margin-top: 5px;
-            display: none;
+            flex-wrap: wrap; /* Zorgt ervoor dat knoppen inpakken op kleinere schermen */
         }
         .loading-indicator {
             position: absolute;
@@ -767,52 +714,58 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
-        /* Bulk Transaction Specific Styles */
-        .bulk-transaction-row {
+        .multiple-transactions-section {
+            margin-top: 0; /* No top margin needed if it's the only section */
+            padding-top: 0; /* No top padding needed */
+            border-top: none; /* No border top needed */
+        }
+        .multiple-transactions-section h2 {
+            font-size: 1.5rem;
+            color: #2c5282;
+            margin-bottom: 15px;
+        }
+        .transaction-form-item {
             border: 1px solid #cbd5e0;
-            border-radius: 10px;
             padding: 20px;
+            border-radius: 10px;
             margin-bottom: 20px;
             background-color: #f7fafc;
             position: relative;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            align-items: end;
         }
-        .bulk-transaction-row .remove-row-btn {
+        .transaction-form-item h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        .remove-transaction-form-btn {
             position: absolute;
             top: 10px;
             right: 10px;
-            background-color: #e53e3e;
+            background-color: #ef4444;
             color: white;
             border: none;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            font-size: 1rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            border-radius: 5px;
+            padding: 5px 10px;
             cursor: pointer;
-            z-index: 10;
-            padding: 0; /* Remove padding to make it a perfect circle */
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            transition: background-color 0.2s ease;
+            font-size: 0.8rem;
+            margin-top: 0; /* Override default button margin-top */
         }
-        .bulk-transaction-row .remove-row-btn:hover {
-            background-color: #c53030;
-            transform: scale(1.05);
+        .remove-transaction-form-btn:hover {
+            background-color: #dc2626;
         }
-
-        /* Background colors for select options */
-        .bg-income { background-color: #9ae6b4; } /* Light green */
-        .bg-expense { background-color: #feb2b2; } /* Light red */
-        .bg-treatments { background-color: #bee3f8; } /* Light blue */
-        .bg-sales { background-color: #fbd38d; } /* Light orange */
-
-        /* Override button styles for the "Afmelden" button */
+        /* Overrides for specific buttons */
+        button#clearFormBtn {
+            background-color: #f6ad55; /* Orange for clear */
+        }
+        button#clearFormBtn:hover {
+            background-color: #ed8936;
+        }
+        button#addTransactionFormBtn, button#saveAllTransactionsBtn {
+            background-color: #805ad5; /* Purple for bulk/add */
+        }
+        button#addTransactionFormBtn:hover, button#saveAllTransactionsBtn:hover {
+            background-color: #6b46c1;
+        }
         button#logoutBtn {
             background-color: #ef4444; /* Red for logout */
         }
@@ -823,33 +776,28 @@
 </head>
 <body>
     <div class="container">
-        <div class="header-container">
-            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small" onerror="this.onerror=null;this.src='https://placehold.co/80x80/000/fff?text=Logo+Niet+Gevonden';">
-            <h1>Financiële Tracker - Invoer</h1>
-        </div>
-
-        <div class="user-id-display">
-            Je gebruikers-ID: <span id="currentUserId">Laden...</span>
-        </div>
+        <h1>Transactie Invoeren</h1>
 
         <!-- Loading Indicator -->
         <div id="loadingIndicator" class="loading-indicator" style="display: none;">
             <div class="spinner"></div>
         </div>
 
-        <div class="input-section">
-            <h2 class="text-xl font-semibold mb-4">Nieuwe Transactie Invoeren</h2>
-            <div id="bulkTransactionContainer">
-                <!-- Bulk transactie rijen worden hier dynamisch toegevoegd -->
+        <!-- Multiple Transactions Input Section -->
+        <div id="multipleTransactionsSection" class="multiple-transactions-section">
+            <h2>Meerdere Transacties Invoeren</h2>
+            <div id="dynamicTransactionFormsContainer">
+                <!-- Dynamische transactieformulieren worden hier toegevoegd -->
             </div>
             <div class="button-group">
-                <button onclick="addBulkTransactionRow()">Rij Toevoegen</button>
-                <button onclick="handleBulkTransactions()">Transacties Opslaan</button>
+                <button id="addTransactionFormBtn">Transactie Toevoegen</button>
+                <button id="saveAllTransactionsBtn">Alle Transacties Opslaan</button>
+                <button id="clearFormBtn">Formulier Leegmaken</button>
             </div>
         </div>
 
-        <div class="button-group">
-            <button onclick="navigateToHome()">Terug naar Start</button>
+        <div class="button-group mt-8">
+            <button id="backToMainBtn">Terug naar Hoofdpagina</button>
             <button id="logoutBtn">Afmelden</button>
         </div>
     </div>
