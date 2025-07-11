@@ -425,6 +425,8 @@
         let currentEditingInvoiceId = null; // To keep track of the invoice being edited
 
         // Firebase configuration (updated with user-provided config)
+        // IMPORTANT: In a real application, you should load this configuration securely.
+        // For this example, it's hardcoded as provided.
         const firebaseConfig = {
             apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
             authDomain: "schkas-66d27.firebaseapp.com",
@@ -434,6 +436,10 @@
             appId: "1:987453212703:web:dcee394027367b74df2d2a",
             measurementId: "G-9M60TQGKJZ"
         };
+
+        // Define __app_id globally if it's not already defined by the environment
+        // This ensures it's available for Firestore paths.
+        const __app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : firebaseConfig.appId;
 
         const companyDetails = {
             name: "Skin Clinic Heusden",
@@ -573,6 +579,7 @@
             // Save to Firestore
             if (isAuthReady && userId) {
                 try {
+                    // Use the globally defined __app_id
                     const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
                     await addDoc(invoicesColRef, invoiceData);
                     showMessageBox('Factuur succesvol opgeslagen!');
@@ -609,6 +616,7 @@
 
             if (isAuthReady && userId) {
                 try {
+                    // Use the globally defined __app_id
                     const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, currentEditingInvoiceId);
                     await updateDoc(invoiceDocRef, invoiceData);
                     showMessageBox('Factuur succesvol bijgewerkt!');
@@ -798,6 +806,7 @@
                 noInvoicesElement.classList.add('hidden'); // Hide "no invoices" initially
             }
 
+            // Use the globally defined __app_id
             const invoicesColRef = collection(db, `artifacts/${__app_id}/users/${userId}/invoices`);
             const q = query(invoicesColRef, orderBy("invoiceDate", "desc")); // Order by date descending
 
@@ -866,6 +875,7 @@
             }
 
             try {
+                // Use the globally defined __app_id
                 const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
                 const invoiceSnap = await getDoc(invoiceDocRef);
 
@@ -894,6 +904,7 @@
             }
 
             try {
+                // Use the globally defined __app_id
                 const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
                 const invoiceSnap = await getDoc(invoiceDocRef);
 
@@ -989,6 +1000,7 @@
             }
 
             try {
+                // Use the globally defined __app_id
                 const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
                 await deleteDoc(invoiceDocRef);
                 showMessageBox('Factuur succesvol verwijderd!');
