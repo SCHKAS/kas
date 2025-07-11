@@ -26,7 +26,7 @@
     <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase instances
@@ -69,15 +69,15 @@
             window.__app_id = appId;
             console.log(`App ID ingesteld: ${window.__app_id}`);
 
-            let firebaseConfig = {};
-
-            firebaseConfig = {
-              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-              authDomain: "schkas-66d27.firebaseapp.com",
-              projectId: "schkas-66d27",
-              storageBucket: "schkas-66d27.firebasestorage.app",
-              messagingSenderId: "987453212703",
-              appId: "1:987453212703:web:dcee394027367b74df2d2a"
+            // Firebase configuration (updated with user-provided config)
+            let firebaseConfig = {
+                apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+                authDomain: "schkas-66d27.firebaseapp.com",
+                projectId: "schkas-66d27",
+                storageBucket: "schkas-66d27.firebasestorage.app",
+                messagingSenderId: "987453212703",
+                appId: "1:987453212703:web:dcee394027367b74df2d2a",
+                measurementId: "G-9M60TQGKJZ"
             };
 
             if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
@@ -89,34 +89,18 @@
             window.auth = getAuth(window.firebaseApp);
             console.log("Firebase app, db, auth geïnitialiseerd.");
 
-            onAuthStateChanged(window.auth, async (user) => {
-                console.log("onAuthStateChanged callback geactiveerd.");
+            onAuthStateChanged(window.auth, (user) => {
+                console.log("onAuthStateChanged callback geactiveerd op export.html.");
                 if (user) {
                     window.userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", window.userId);
+                    window.isAuthReady = true;
+                    loadTransactions(); // Load transactions once authenticated
                 } else {
-                    console.log("Geen gebruiker gevonden, probeer anoniem aan te melden.");
-                    try {
-                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                        if (__initial_auth_token) {
-                            await signInWithCustomToken(window.auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(window.auth);
-                        }
-                        window.userId = window.auth.currentUser.uid;
-                        console.log("Anoniem aangemeld. Gebruikers-ID:", window.userId);
-                    } catch (error) {
-                        console.error("Fout tijdens anonieme aanmelding:", error);
-                    }
+                    console.log("Geen gebruiker gevonden, doorsturen naar auth.html.");
+                    window.location.href = 'auth.html'; // Redirect to login page
                 }
-                window.isAuthReady = true;
                 console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`);
-                if (window.userId) {
-                    loadTransactions();
-                } else {
-                    console.warn("Gebruikers-ID niet beschikbaar na authenticatiestatuswijziging. Kan transacties niet laden.");
-                    showLoadingIndicator(false);
-                }
             });
         };
 
@@ -163,8 +147,8 @@
         window.loadTransactions = function() {
             console.log("loadTransactions gestart op export.html.");
             showLoadingIndicator(true);
-            if (!window.db) {
-                console.error("Firestore is niet geïnitialiseerd. Kan transacties niet laden.");
+            if (!window.db || !window.userId) { // Ensure userId is also available
+                console.error("Firestore of User ID is niet geïnitialiseerd. Kan transacties niet laden.");
                 showLoadingIndicator(false);
                 return;
             }
@@ -183,7 +167,7 @@
                 showLoadingIndicator(false);
             });
 
-            document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Anonieme Gebruiker';
+            document.getElementById('currentUserId').textContent = window.userId ? window.userId : 'Niet ingelogd'; // Display actual user ID
         }
 
         /**
@@ -491,7 +475,7 @@
 <body>
     <div class="container">
         <div class="header-container">
-            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small">
+            <img src="Black logo - no background.png" alt="Bedrijfslogo" class="logo-small" onerror="this.onerror=null;this.src='https://placehold.co/80x80/000/fff?text=Logo+Niet+Gevonden';">
             <h1>Financiële Tracker - Export</h1>
         </div>
 
