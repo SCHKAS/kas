@@ -124,9 +124,15 @@
             min-width: 250px;
             margin-bottom: 10px;
         }
-        #invoiceOutput .invoice-header .company-info,
+        #invoiceOutput .invoice-header .company-info {
+            text-align: left;
+        }
         #invoiceOutput .invoice-header .client-info {
             text-align: left;
+            border: 1px solid #cbd5e0; /* Add border */
+            border-radius: 8px; /* Rounded corners for the border */
+            padding: 15px; /* Add some padding inside the border */
+            box-sizing: border-box; /* Include padding in the element's total width and height */
         }
         #invoiceOutput .invoice-header .company-info h3,
         #invoiceOutput .invoice-header .client-info h3 {
@@ -425,7 +431,7 @@
             // Als het in een submap staat (bijv. 'assets/'), wijzig dan naar 'assets/Black%20logo%20-%20no%20background.png'
             // Als je een absolute URL nodig hebt (bijv. van GitHub Raw), vervang dan deze hele string:
             // Voorbeeld: "https://raw.githubusercontent.com/jouwgebruikersnaam/jouwrepo/main/Black%20logo%20-%20no%20background.png"
-            logoUrl: "Black%20logo%20-%20no%20background.png"
+            logoUrl: "Black%20logo%20-%20no%20background.png" // Relative path to the logo
         };
 
         const VAT_RATE = 0.21; // 21% BTW
