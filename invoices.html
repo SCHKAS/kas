@@ -116,8 +116,9 @@
         #invoiceOutput .invoice-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: flex-start; /* Aligns items to the top of the flex container */
             flex-wrap: wrap;
+            margin-top: 20px; /* Space below the logo and Factuur title */
         }
         #invoiceOutput .invoice-header div {
             flex: 1;
@@ -126,13 +127,17 @@
         }
         #invoiceOutput .invoice-header .company-info {
             text-align: left;
+            flex-grow: 1; /* Allow it to grow */
+            margin-right: 20px; /* Space between company and client info */
         }
         #invoiceOutput .invoice-header .client-info {
-            text-align: left;
+            text-align: left; /* Keep text left aligned within its box */
             border: 1px solid #cbd5e0; /* Add border */
             border-radius: 8px; /* Rounded corners for the border */
             padding: 15px; /* Add some padding inside the border */
             box-sizing: border-box; /* Include padding in the element's total width and height */
+            flex-grow: 1; /* Allow it to grow */
+            max-width: 350px; /* Limit width to keep it compact */
         }
         #invoiceOutput .invoice-header .company-info h3,
         #invoiceOutput .invoice-header .client-info h3 {
@@ -144,7 +149,10 @@
         #invoiceOutput .company-logo {
             max-width: 150px; /* Adjust as needed */
             height: auto;
-            margin-bottom: 10px;
+            margin-bottom: 20px; /* Add some space below the logo */
+            display: block; /* Make it a block element to take full width */
+            margin-left: 0; /* Align logo to the left */
+            margin-right: auto;
         }
         #invoiceOutput .invoice-details {
             text-align: center;
@@ -704,10 +712,10 @@
             `;
 
             const invoiceContent = `
+                <img src="${companyDetails.logoUrl}" alt="Bedrijfslogo" class="company-logo" onerror="this.onerror=null;this.src='https://placehold.co/150x50/000/fff?text=Logo+Niet+Gevonden';">
                 <h1 style="text-align: center; color: #2c5282; margin-bottom: 20px; font-size: 2.5rem;">Factuur</h1>
                 <div class="invoice-header">
                     <div class="company-info">
-                        <img src="${companyDetails.logoUrl}" alt="Bedrijfslogo" class="company-logo" onerror="this.onerror=null;this.src='https://placehold.co/150x50/000/fff?text=Logo+Niet+Gevonden';">
                         <h3>${companyDetails.name}</h3>
                         <p>${companyDetails.address}</p>
                         <p>Telefoon: ${companyDetails.phone}</p>
