@@ -389,6 +389,7 @@
                 <button id="updateInvoiceBtn" style="display: none;">Factuur Bijwerken</button>
                 <button id="newInvoiceBtn">Nieuwe Factuur</button>
                 <button id="backToMainBtn">Terug naar Hoofdpagina</button>
+                <button id="logoutBtn" class="bg-red-500 hover:bg-red-700">Afmelden</button>
             </div>
         </div>
 
@@ -412,7 +413,7 @@
     <script type="module">
         // Firebase SDK imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase instances
@@ -423,8 +424,16 @@
         let isAuthReady = false;
         let currentEditingInvoiceId = null; // To keep track of the invoice being edited
 
-        // Define __app_id for GitHub Pages environment if not provided by Canvas
-        const __app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : 'finance-tracker-bulk-app';
+        // Firebase configuration (updated with user-provided config)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+            authDomain: "schkas-66d27.firebaseapp.com",
+            projectId: "schkas-66d27",
+            storageBucket: "schkas-66d27.firebasestorage.app",
+            messagingSenderId: "987453212703",
+            appId: "1:987453212703:web:dcee394027367b74df2d2a",
+            measurementId: "G-9M60TQGKJZ"
+        };
 
         const companyDetails = {
             name: "Skin Clinic Heusden",
@@ -435,10 +444,6 @@
             iban: "BE39 7350 6786 4319",
             bic: "KREDBEBB",
             vat: "BE1013.910.910",
-            // BELANGRIJK: Controleer of 'Black%20logo%20-%20no%20background.png' in dezelfde map staat als invoices.html
-            // Als het in een submap staat (bijv. 'assets/'), wijzig dan naar 'assets/Black%20logo%20-%20no%20background.png'
-            // Als je een absolute URL nodig hebt (bijv. van GitHub Raw), vervang dan deze hele string:
-            // Voorbeeld: "https://raw.githubusercontent.com/jouwgebruikersnaam/jouwrepo/main/Black%20logo%20-%20no%20background.png"
             logoUrl: "Black%20logo%20-%20no%20background.png" // Relative path to the logo
         };
 
@@ -447,47 +452,19 @@
 
         // Initialize Firebase and set up authentication
         async function initFirebase() {
-            let firebaseConfig = {};
-            firebaseConfig = {
-              apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-              authDomain: "schkas-66d27.firebaseapp.com",
-              projectId: "schkas-66d27",
-              storageBucket: "schkas-66d27.firebasestorage.app",
-              messagingSenderId: "987453212703",
-              appId: "1:987453212703:web:dcee394027367b74df2d2a"
-            };
-
-            if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
-                console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Persistente opslag zal niet werken.");
-            }
-
             firebaseApp = initializeApp(firebaseConfig);
             db = getFirestore(firebaseApp);
             auth = getAuth(firebaseApp);
 
-            onAuthStateChanged(auth, async (user) => {
+            onAuthStateChanged(auth, (user) => {
                 if (user) {
                     userId = user.uid;
                     console.log("Gebruiker geauthenticeerd:", userId);
-                } else {
-                    try {
-                        const __initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null;
-                        if (__initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                        userId = auth.currentUser.uid;
-                        console.log("Anoniem aangemeld. Gebruikers-ID:", userId);
-                    } catch (error) {
-                        console.error("Fout tijdens anonieme aanmelding:", error);
-                    }
-                }
-                isAuthReady = true;
-                if (userId) {
+                    isAuthReady = true;
                     loadInvoices(); // Load invoices once authenticated
                 } else {
-                    document.getElementById('loadingInvoices').textContent = 'Meld u aan om facturen te laden.';
+                    // User is not signed in, redirect to auth.html
+                    window.location.href = 'auth.html';
                 }
             });
         }
@@ -504,8 +481,8 @@
             document.getElementById('updateInvoiceBtn').addEventListener('click', updateInvoice);
             document.getElementById('newInvoiceBtn').addEventListener('click', clearForm);
             document.getElementById('backToMainBtn').addEventListener('click', () => window.history.back());
-            // Removed event listener for exportInvoiceBtn as the button is removed
-            // document.getElementById('exportInvoiceBtn').addEventListener('click', exportInvoice);
+            document.getElementById('logoutBtn').addEventListener('click', logoutUser);
+
 
             // Event delegation for product line inputs and remove buttons
             document.getElementById('productLinesContainer').addEventListener('input', (event) => {
@@ -519,6 +496,17 @@
                 }
             });
         });
+
+        function logoutUser() {
+            signOut(auth).then(() => {
+                // Sign-out successful.
+                window.location.href = 'auth.html';
+            }).catch((error) => {
+                // An error happened.
+                console.error("Fout bij afmelden:", error);
+                showMessageBox('Fout bij afmelden. Probeer opnieuw.');
+            });
+        }
 
         function addProductLine(description = '', quantity = 1, price = 0) {
             productLineCounter++;
@@ -540,7 +528,8 @@
                 </div>
                 <button type="button" class="remove-product-line-btn bg-red-500 hover:bg-red-700 text-white p-2 rounded-md h-10 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
-                </button>
+                    </button>
+            </div>
             `;
             container.appendChild(newProductLine);
             calculateTotalAmount();
