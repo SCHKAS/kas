@@ -116,15 +116,15 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Firebase configuration (replace with your actual Firebase config)
-        let firebaseConfig = {};
-        firebaseConfig = {
-          apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-          authDomain: "schkas-66d27.firebaseapp.com",
-          projectId: "schkas-66d27",
-          storageBucket: "schkas-66d27.firebasestorage.app",
-          messagingSenderId: "987453212703",
-          appId: "1:987453212703:web:dcee394027367b74df2d2a"
+        // Firebase configuration (updated with user-provided config)
+        let firebaseConfig = {
+            apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+            authDomain: "schkas-66d27.firebaseapp.com",
+            projectId: "schkas-66d27",
+            storageBucket: "schkas-66d27.firebasestorage.app",
+            messagingSenderId: "987453212703",
+            appId: "1:987453212703:web:dcee394027367b74df2d2a",
+            measurementId: "G-9M60TQGKJZ"
         };
 
         if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
