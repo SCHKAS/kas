@@ -78,6 +78,7 @@
                     console.log("Geen gebruiker gevonden, doorsturen naar auth.html.");
                     window.location.href = 'auth.html';
                 }
+                console.log(`isAuthReady ingesteld op ${window.isAuthReady}. userId: ${window.userId}`); // Debug log
             });
         };
 
@@ -95,9 +96,14 @@
             window.location.href = 'export.html';
         }
 
-        // NIEUWE functie om naar de facturen opmaak pagina te navigeren
+        // Functie om naar de facturen opmaak pagina te navigeren
         window.navigateToInvoices = function() {
             window.location.href = 'invoices.html';
+        }
+
+        // NIEUWE functie om naar de instellingenpagina te navigeren
+        window.navigateToSettings = function() {
+            window.location.href = 'settings.html'; // Er wordt van uitgegaan dat je een settings.html pagina zult maken
         }
 
         // Functie om af te melden
@@ -160,9 +166,7 @@
         }
         .button-group {
             display: grid;
-            /* Probeer 5 kolommen te passen, met een minimum breedte van 130px per knop. */
-            /* Dit zorgt ervoor dat ze op grotere schermen naast elkaar staan en op kleinere schermen netjes inpakken. */
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            grid-template-columns: repeat(3, 1fr); /* 3 kolommen voor desktop */
             gap: 15px; /* Ruimte tussen de knoppen */
             margin-top: 30px;
             justify-items: center; /* Centreer items in de grid cellen */
@@ -185,16 +189,16 @@
             text-align: center;
             width: 100%; /* Vul de breedte van de grid cel */
             aspect-ratio: 1 / 1; /* Maak de knop vierkant */
-            min-height: 100px; /* Minimale hoogte voor kleinere knoppen */
+            min-height: 120px; /* Minimale hoogte voor de knoppen */
         }
         button:hover {
             background-color: #4299e1;
             transform: translateY(-2px);
         }
         .button-icon {
-            width: 36px; /* Kleinere grootte van het icoon */
-            height: 36px;
-            margin-bottom: 8px; /* Ruimte tussen icoon en tekst */
+            width: 48px; /* Grotere grootte van het icoon */
+            height: 48px;
+            margin-bottom: 10px; /* Meer ruimte tussen icoon en tekst */
             fill: currentColor; /* Zorgt ervoor dat het SVG-icoon de tekstkleur overneemt */
         }
         .user-id-display {
@@ -205,9 +209,9 @@
         }
 
         /* Responsive aanpassingen voor kleinere schermen */
-        @media (max-width: 768px) {
+        @media (max-width: 992px) { /* Tablet size, adjust as needed */
             .button-group {
-                grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); /* Blijft flexibel op tablets */
+                grid-template-columns: repeat(2, 1fr); /* 2 kolommen voor tablets */
             }
         }
 
@@ -263,6 +267,13 @@
                     <line x1="10" y1="9" x2="8" y2="9"></line>
                 </svg>
                 <span>Facturen Opmaken</span>
+            </button>
+            <button onclick="navigateToSettings()">
+                <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.78 1.28a2 2 0 0 0 .73 2.73l.04.04a2 2 0 0 1 0 2.83l-.04.04a2 2 0 0 0-.73 2.73l.78 1.28a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.78-1.28a2 2 0 0 0-.73-2.73l-.04-.04a2 2 0 0 1 0-2.83l.04-.04a2 2 0 0 0 .73-2.73l-.78-1.28a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span>Instellingen</span>
             </button>
             <button id="logoutBtn" class="bg-red-500 hover:bg-red-700">
                 <svg class="button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
