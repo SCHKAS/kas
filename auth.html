@@ -3,8 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inloggen - Financiële Tracker</title>
+    <title>Login / Registreer - Financiële Tracker</title>
+    <base href="/kas/"> <!-- Belangrijke toevoeging voor juiste paden op GitHub Pages -->
+    <link rel="manifest" href="manifest.json"> <!-- Link naar het PWA manifest bestand -->
+    <script>
+        // Registreer de Service Worker voor PWA functionaliteit
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('service-worker.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase configuratie (vervang met jouw eigen gegevens)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
+            authDomain: "schkas-66d27.firebaseapp.com",
+            projectId: "schkas-66d27",
+            storageBucket: "schkas-66d27.firebasestorage.app",
+            messagingSenderId: "987453212703",
+            appId: "1:987453212703:web:dcee394027367b74df2d2a",
+            measurementId: "G-9M60TQGKJZ"
+        };
+
+        // Initialiseer Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Functie voor inloggen
+        window.loginUser = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                showMessageBox('Vul alstublieft zowel e-mail als wachtwoord in.');
+                return;
+            }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessageBox('Succesvol ingelogd!');
+                window.location.href = 'index.html'; // Doorsturen naar index.html
+            } catch (error) {
+                console.error("Fout bij inloggen:", error.message);
+                let errorMessage = "Fout bij inloggen. Controleer je e-mail en wachtwoord.";
+                if (error.code === 'auth/user-not-found') {
+                    errorMessage = "Geen gebruiker gevonden met dit e-mailadres.";
+                } else if (error.code === 'auth/wrong-password') {
+                    errorMessage = "Onjuist wachtwoord.";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "Ongeldig e-mailadres.";
+                }
+                showMessageBox(errorMessage);
+            }
+        };
+
+        // Functie voor registreren
+        window.registerUser = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                showMessageBox('Vul alstublieft zowel e-mail als wachtwoord in.');
+                return;
+            }
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showMessageBox('Registratie succesvol! Je bent nu ingelogd.');
+                window.location.href = 'index.html'; // Doorsturen naar index.html
+            } catch (error) {
+                console.error("Fout bij registreren:", error.message);
+                let errorMessage = "Fout bij registreren. Probeer opnieuw.";
+                if (error.code === 'auth/email-already-in-use') {
+                    errorMessage = "Dit e-mailadres is al in gebruik.";
+                } else if (error.code === 'auth/weak-password') {
+                    errorMessage = "Het wachtwoord is te zwak (minimaal 6 tekens).";
+                } else if (error.code === 'auth/invalid-email') {
+                    errorMessage = "Ongeldig e-mailadres.";
+                }
+                showMessageBox(errorMessage);
+            }
+        };
+
+        // Functie voor anoniem inloggen (optioneel)
+        window.signInAnonymouslyUser = async function() {
+            try {
+                await signInAnonymously(auth);
+                showMessageBox('Anoniem ingelogd!');
+                window.location.href = 'index.html'; // Doorsturen naar index.html
+            } catch (error) {
+                console.error("Fout bij anoniem inloggen:", error.message);
+                showMessageBox('Fout bij anoniem inloggen. Probeer opnieuw.');
+            }
+        };
+
+        // Custom message box function (replaces alert() and confirm())
+        function showMessageBox(message) {
+            const messageBox = document.createElement('div');
+            messageBox.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background-color: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                z-index: 1000;
+                text-align: center;
+                max-width: 300px;
+                border: 1px solid #ccc;
+            `;
+            messageBox.innerHTML = `
+                <p>${message}</p>
+                <button style="margin-top: 15px; padding: 8px 15px; background-color: #63b3ed; color: white; border: none; border-radius: 5px; cursor: pointer;">OK</button>
+            `;
+            document.body.appendChild(messageBox);
+
+            messageBox.querySelector('button').onclick = () => {
+                document.body.removeChild(messageBox);
+            };
+        }
+
+        // Voeg event listeners toe bij het laden van de pagina
+        window.onload = function() {
+            document.getElementById('loginBtn').addEventListener('click', window.loginUser);
+            document.getElementById('registerBtn').addEventListener('click', window.registerUser);
+            // document.getElementById('anonymousLoginBtn').addEventListener('click', window.signInAnonymouslyUser); // Optioneel
+        };
+    </script>
     <style>
         body {
             font-family: 'Calibri', sans-serif;
@@ -18,7 +157,7 @@
             padding: 20px;
             box-sizing: border-box;
         }
-        .auth-container {
+        .container {
             background-color: #ffffff;
             padding: 30px;
             border-radius: 15px;
@@ -30,190 +169,72 @@
         h1 {
             color: #2c5282;
             margin-bottom: 20px;
-            font-size: 2rem;
+            font-size: 2.2rem;
         }
         .form-group {
             margin-bottom: 15px;
             text-align: left;
         }
-        .form-group label {
+        label {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
-            color: #2d3748;
+            color: #4a5568;
         }
-        .form-group input[type="email"],
-        .form-group input[type="password"] {
+        input[type="email"],
+        input[type="password"] {
             width: 100%;
             padding: 10px;
-            border: 1px solid #cbd5e0;
+            border: 1px solid #a0aec0;
             border-radius: 8px;
             box-sizing: border-box;
             font-size: 1rem;
         }
-        .button-group {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 25px;
-        }
         button {
             background-color: #63b3ed;
             color: white;
-            padding: 12px 20px;
+            padding: 12px 25px;
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            font-size: 1rem;
-            font-weight: bold;
+            font-size: 1.1rem;
             transition: background-color 0.3s ease, transform 0.2s ease;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 10px;
+            width: 100%; /* Maak knoppen volledige breedte */
         }
         button:hover {
             background-color: #4299e1;
             transform: translateY(-2px);
         }
-        #messageBox {
-            margin-top: 20px;
-            padding: 10px;
-            border-radius: 8px;
-            background-color: #fbd38d; /* Light orange for messages */
-            color: #975a16; /* Darker orange text */
-            display: none; /* Hidden by default */
+        button#registerBtn {
+            background-color: #48bb78; /* Groen voor registreren */
         }
-        #messageBox.error {
-            background-color: #feb2b2; /* Light red for errors */
-            color: #c53030; /* Darker red text */
+        button#registerBtn:hover {
+            background-color: #38a169;
         }
-        #messageBox.success {
-            background-color: #9ae6b4; /* Light green for success */
-            color: #2f855a; /* Darker green text */
+        button#anonymousLoginBtn {
+            background-color: #a0aec0; /* Grijs voor anoniem */
+        }
+        button#anonymousLoginBtn:hover {
+            background-color: #718096;
         }
     </style>
 </head>
 <body>
-    <div class="auth-container">
-        <h1>Inloggen of Registreren</h1>
-
+    <div class="container">
+        <h1>Login / Registreer</h1>
         <div class="form-group">
-            <label for="email">E-mailadres:</label>
+            <label for="email">E-mail:</label>
             <input type="email" id="email" placeholder="jouw@email.com" required>
         </div>
         <div class="form-group">
             <label for="password">Wachtwoord:</label>
             <input type="password" id="password" placeholder="Wachtwoord" required>
         </div>
-
-        <div class="button-group">
-            <button id="signInBtn">Aanmelden</button>
-            <button id="signUpBtn">Registreren</button>
-        </div>
-
-        <div id="messageBox"></div>
+        <button id="loginBtn">Inloggen</button>
+        <button id="registerBtn">Registreren</button>
+        <!-- <button id="anonymousLoginBtn">Anoniem Inloggen</button> -->
     </div>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-        // Firebase configuration (updated with user-provided config)
-        let firebaseConfig = {
-            apiKey: "AIzaSyCORzv-FVt-7ZUxMBUsmaTl9ZAGcgZk8io",
-            authDomain: "schkas-66d27.firebaseapp.com",
-            projectId: "schkas-66d27",
-            storageBucket: "schkas-66d27.firebasestorage.app",
-            messagingSenderId: "987453212703",
-            appId: "1:987453212703:web:dcee394027367b74df2d2a",
-            measurementId: "G-9M60TQGKJZ"
-        };
-
-        if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
-            console.error("Firebase configuratie is onvolledig of nog steeds een placeholder. Authenticatie zal niet werken.");
-            showMessage('Fout: Firebase configuratie ontbreekt.', 'error');
-        }
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const signInBtn = document.getElementById('signInBtn');
-        const signUpBtn = document.getElementById('signUpBtn');
-        const messageBox = document.getElementById('messageBox');
-
-        // Check if user is already logged in
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                // User is signed in, redirect to invoices page
-                window.location.href = 'invoices.html';
-            }
-        });
-
-        signInBtn.addEventListener('click', async () => {
-            const email = emailInput.value;
-            const password = passwordInput.value;
-
-            if (!email || !password) {
-                showMessage('Vul alstublieft zowel e-mail als wachtwoord in.', 'error');
-                return;
-            }
-
-            try {
-                await signInWithEmailAndPassword(auth, email, password);
-                showMessage('Succesvol aangemeld!', 'success');
-                window.location.href = 'invoices.html'; // Redirect on successful login
-            } catch (error) {
-                console.error("Fout bij aanmelden:", error.code, error.message);
-                let errorMessage = 'Fout bij aanmelden. Controleer uw gegevens.';
-                if (error.code === 'auth/invalid-email') {
-                    errorMessage = 'Ongeldig e-mailadres.';
-                } else if (error.code === 'auth/user-disabled') {
-                    errorMessage = 'Deze gebruiker is uitgeschakeld.';
-                } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-                    errorMessage = 'Ongeldige combinatie van e-mail en wachtwoord.';
-                }
-                showMessage(errorMessage, 'error');
-            }
-        });
-
-        signUpBtn.addEventListener('click', async () => {
-            const email = emailInput.value;
-            const password = passwordInput.value;
-
-            if (!email || !password) {
-                showMessage('Vul alstublieft zowel e-mail als wachtwoord in.', 'error');
-                return;
-            }
-
-            if (password.length < 6) {
-                showMessage('Wachtwoord moet minimaal 6 tekens lang zijn.', 'error');
-                return;
-            }
-
-            try {
-                await createUserWithEmailAndPassword(auth, email, password);
-                showMessage('Account succesvol aangemaakt! U bent nu aangemeld.', 'success');
-                window.location.href = 'invoices.html'; // Redirect on successful registration
-            } catch (error) {
-                console.error("Fout bij registreren:", error.code, error.message);
-                let errorMessage = 'Fout bij registreren. Probeer opnieuw.';
-                if (error.code === 'auth/email-already-in-use') {
-                    errorMessage = 'Dit e-mailadres is al in gebruik.';
-                } else if (error.code === 'auth/weak-password') {
-                    errorMessage = 'Wachtwoord is te zwak.';
-                } else if (error.code === 'auth/invalid-email') {
-                    errorMessage = 'Ongeldig e-mailadres.';
-                }
-                showMessage(errorMessage, 'error');
-            }
-        });
-
-        function showMessage(message, type = 'info') {
-            messageBox.textContent = message;
-            messageBox.className = ''; // Clear existing classes
-            messageBox.classList.add(type);
-            messageBox.style.display = 'block';
-        }
-    </script>
 </body>
 </html>
