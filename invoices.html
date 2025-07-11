@@ -259,6 +259,12 @@
         #savedInvoicesList .invoice-item-actions .delete-button:hover {
             background-color: #dc2626;
         }
+        #savedInvoicesList .invoice-item-actions .export-list-button {
+            background-color: #3182ce; /* Blue for export */
+        }
+        #savedInvoicesList .invoice-item-actions .export-list-button:hover {
+            background-color: #2b6cb0;
+        }
 
         /* Hide form elements when printing */
         @media print {
@@ -574,10 +580,6 @@
                 invoiceData.invoiceNumber = invoiceNumberDisplayElement.textContent;
             } else {
                 console.warn("invoiceNumberDisplay element not found when updating invoice. Using previously loaded invoice number.");
-                // As a fallback, if the element isn't found (shouldn't happen if renderInvoice was called),
-                // you might need to retrieve the original invoice number from the stored `currentEditingInvoiceData`
-                // if you were storing the full data when `editInvoice` was called.
-                // For now, we assume it's there after `renderInvoice` is called.
             }
 
             if (isAuthReady && userId) {
@@ -801,6 +803,7 @@
                         <div class="invoice-item-actions">
                             <button data-invoice-id="${doc.id}" class="edit-button">Bewerken</button>
                             <button data-invoice-id="${doc.id}" class="delete-button">Verwijderen</button>
+                            <button data-invoice-id="${doc.id}" class="export-list-button">Exporteren</button> <!-- NEW EXPORT BUTTON -->
                         </div>
                     `;
                     invoicesList.appendChild(li);
@@ -813,6 +816,10 @@
                 invoicesList.querySelectorAll('.delete-button').forEach(button => {
                     button.addEventListener('click', (event) => deleteInvoice(event.target.dataset.invoiceId));
                 });
+                // Attach event listener for the new export button
+                invoicesList.querySelectorAll('.export-list-button').forEach(button => {
+                    button.addEventListener('click', (event) => exportSpecificInvoice(event.target.dataset.invoiceId));
+                });
 
             }, (error) => {
                 console.error("Fout bij het laden van facturen: ", error);
@@ -824,6 +831,35 @@
                     noInvoicesElement.classList.add('hidden'); // Hide no invoices if there's an error
                 }
             });
+        }
+
+        async function exportSpecificInvoice(invoiceId) {
+            if (!db || !userId) {
+                showMessageBox('Authenticatie is nog niet voltooid. Kan factuur niet exporteren.');
+                return;
+            }
+
+            try {
+                const invoiceDocRef = doc(db, `artifacts/${__app_id}/users/${userId}/invoices`, invoiceId);
+                const invoiceSnap = await getDoc(invoiceDocRef);
+
+                if (invoiceSnap.exists()) {
+                    const invoiceData = invoiceSnap.data();
+                    renderInvoice(invoiceData); // Render the specific invoice
+                    // Wait a moment for rendering to complete before printing
+                    setTimeout(() => {
+                        window.print();
+                        // Optionally hide the invoice output after printing
+                        document.getElementById('invoiceOutput').classList.add('hidden');
+                        document.getElementById('exportButtonGroup').style.display = 'none';
+                    }, 500); // Small delay
+                } else {
+                    showMessageBox('Factuur niet gevonden voor export.');
+                }
+            } catch (error) {
+                console.error("Fout bij het exporteren van factuur: ", error);
+                showMessageBox('Fout bij het exporteren van factuur.');
+            }
         }
 
         async function editInvoice(invoiceId) {
