@@ -421,8 +421,11 @@
             iban: "BE39 7350 6786 4319",
             bic: "KREDBEBB",
             vat: "BE1013.910.910",
-            // Updated logoUrl to point to the uploaded image
-            logoUrl: "files/Black%20logo%20-%20no%20background.png-7533a92a-7981-4ff2-89c8-00b4e127e5da"
+            // BELANGRIJK: Controleer of 'Black%20logo%20-%20no%20background.png' in dezelfde map staat als invoices.html
+            // Als het in een submap staat (bijv. 'assets/'), wijzig dan naar 'assets/Black%20logo%20-%20no%20background.png'
+            // Als je een absolute URL nodig hebt (bijv. van GitHub Raw), vervang dan deze hele string:
+            // Voorbeeld: "https://raw.githubusercontent.com/jouwgebruikersnaam/jouwrepo/main/Black%20logo%20-%20no%20background.png"
+            logoUrl: "Black%20logo%20-%20no%20background.png"
         };
 
         const VAT_RATE = 0.21; // 21% BTW
@@ -511,7 +514,7 @@
             newProductLine.innerHTML = `
                 <div class="flex-1">
                     <label for="itemDescription_${productLineCounter}">Omschrijving:</label>
-                    <input type="text" id="itemDescription_${productLineCounter}" class="item-description" placeholder="Product/Dienst" value="${description}" required>
+                    <input type="text" id="itemDescription_${productLineCounter}" class="item-description" placeholder="Product/Dienst" required>
                 </div>
                 <div class="w-20">
                     <label for="itemQuantity_${productLineCounter}">Aantal:</label>
@@ -519,7 +522,7 @@
                 </div>
                 <div class="w-32">
                     <label for="itemPrice_${productLineCounter}">Prijs/stuk (incl. BTW):</label>
-                    <input type="number" id="itemPrice_${productLineCounter}" class="item-price" step="0.01" placeholder="0.00" value="${price}" required>
+                    <input type="number" id="itemPrice_${productLineCounter}" class="item-price" step="0.01" placeholder="0.00" required>
                 </div>
                 <button type="button" class="remove-product-line-btn bg-red-500 hover:bg-red-700 text-white p-2 rounded-md h-10 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
