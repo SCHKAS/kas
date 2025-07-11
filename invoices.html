@@ -134,6 +134,12 @@
             margin-bottom: 5px;
             color: #2c5282;
         }
+        /* Styling for the logo */
+        #invoiceOutput .company-logo {
+            max-width: 150px; /* Adjust as needed */
+            height: auto;
+            margin-bottom: 10px;
+        }
         #invoiceOutput .invoice-details {
             text-align: center;
             font-size: 1.2rem;
@@ -414,7 +420,8 @@
             bank: "KBC",
             iban: "BE39 7350 6786 4319",
             bic: "KREDBEBB",
-            vat: "BE1013.910.910"
+            vat: "BE1013.910.910",
+            logoUrl: "https://placehold.co/150x50/000/fff?text=Logo" // Placeholder for the actual logo URL
         };
 
         const VAT_RATE = 0.21; // 21% BTW
@@ -687,9 +694,10 @@
             `;
 
             const invoiceContent = `
-                <h1 style="text-align: center; color: #2c5282; margin-bottom: 20px; font-size: 2.5rem;">Factuur</h1> <!-- Re-added "Factuur" as header for the invoice content -->
+                <h1 style="text-align: center; color: #2c5282; margin-bottom: 20px; font-size: 2.5rem;">Factuur</h1>
                 <div class="invoice-header">
                     <div class="company-info">
+                        <img src="${companyDetails.logoUrl}" alt="Bedrijfslogo" class="company-logo" onerror="this.onerror=null;this.src='https://placehold.co/150x50/000/fff?text=Logo+Niet+Gevonden';">
                         <h3>${companyDetails.name}</h3>
                         <p>${companyDetails.address}</p>
                         <p>Telefoon: ${companyDetails.phone}</p>
